@@ -486,7 +486,7 @@ private fun BrandHeader(isPortuguese: Boolean, onLanguageToggle: () -> Unit) {
                 .background(Brush.linearGradient(listOf(Color(0xFF17352F), Color(0xFF21223B)))),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Outlined.GraphicEq, contentDescription = null, tint = PrimaryMint, modifier = Modifier.size(30.dp))
+            AudioLabMark(modifier = Modifier.size(30.dp))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("AUDIO LAB", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
@@ -506,6 +506,27 @@ private fun BrandHeader(isPortuguese: Boolean, onLanguageToggle: () -> Unit) {
                 Icon(Icons.Outlined.Language, contentDescription = null, tint = PrimaryMint, modifier = Modifier.size(15.dp))
                 Text(if (isPortuguese) "PT" else "EN", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+
+@Composable
+private fun AudioLabMark(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val bars = listOf(0.28f, 0.56f, 0.82f, 0.48f, 1.0f, 0.68f, 0.42f, 0.24f)
+        val gap = size.width * 0.055f
+        val barWidth = (size.width - gap * (bars.size - 1)) / bars.size
+        bars.forEachIndexed { index, level ->
+            val barHeight = size.height * level
+            val x = index * (barWidth + gap)
+            val top = (size.height - barHeight) / 2f
+            drawRoundRect(
+                color = if (index < 5) PrimaryMint else Lavender,
+                topLeft = Offset(x, top),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+            )
         }
     }
 }
