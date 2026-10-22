@@ -483,7 +483,7 @@ private fun BrandHeader(isPortuguese: Boolean, onLanguageToggle: () -> Unit) {
     ) {
         Box(
             modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF17352F), Color(0xFF21223B))),
+                .background(Brush.linearGradient(listOf(Color(0xFF17352F), Color(0xFF21223B)))),
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Outlined.GraphicEq, contentDescription = null, tint = PrimaryMint, modifier = Modifier.size(30.dp))
