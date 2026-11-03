@@ -189,6 +189,64 @@ class WavPcmProcessorTest {
         }
     }
 
+    @Test
+    fun reverseReversesStereoFramesWithoutSwappingChannels() = runBlocking {
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
+        try {
+            val input = File(folder, "stereo.wav")
+            val output = File(folder, "reversed.wav")
+            writeStereoPcm16Wav(
+                input,
+                shortArrayOf(1, 101, 2, 102, 3, 103),
+                sampleRate = 8000
+            )
+
+            val summary = WavPcmProcessor.reverse(
+                source = input,
+                destination = output,
+                onProgress = {}
+            )
+
+            RandomAccessFile(output, "r").use { wav ->
+                val channelFrames = ShortArray(6) { wav.readShortLE() }
+                assertTrue(channelFrames.contentEquals(shortArrayOf(3, 103, 2, 102, 1, 101)))
+                assertEquals("RIFF", readRiffHeader(output))
+            }
+            assertEquals(3L, summary.frames)
+            assertEquals(2, summary.channels)
+            assertEquals(8000, summary.sampleRate)
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    private fun readRiffHeader(file: File): String =
+        RandomAccessFile(file, "r").use {
+            val bytes = ByteArray(4)
+            it.readFully(bytes)
+            String(bytes, Charsets.US_ASCII)
+        }
+
+    private fun writeStereoPcm16Wav(file: File, samples: ShortArray, sampleRate: Int) {
+        require(samples.size % 2 == 0)
+        RandomAccessFile(file, "rw").use { wav ->
+            val dataSize = samples.size * 2
+            wav.writeBytes("RIFF")
+            wav.writeUInt32(36L + dataSize)
+            wav.writeBytes("WAVEfmt ")
+            wav.writeUInt32(16)
+            wav.writeUInt16(1)
+            wav.writeUInt16(2)
+            wav.writeUInt32(sampleRate.toLong())
+            wav.writeUInt32(sampleRate.toLong() * 4L)
+            wav.writeUInt16(4)
+            wav.writeUInt16(16)
+            wav.writeBytes("data")
+            wav.writeUInt32(dataSize.toLong())
+            samples.forEach { wav.writeUInt16(it.toInt() and 0xFFFF) }
+        }
+    }
+
     private fun writePcm16Wav(file: File, samples: ShortArray, sampleRate: Int = 48000) {
         RandomAccessFile(file, "rw").use { wav ->
             val dataSize = samples.size * 2
