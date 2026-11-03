@@ -104,8 +104,9 @@ fun ToolDetailScreen(
     val workInfos by workInfosLiveData.observeAsState(initial = emptyList())
     // A tool screen only observes jobs for its currently selected source file.
     // Other files may be processed independently in the background.
-    val sourceWorkInfos = workInfos.filter {
-        it.inputData.getString(ProcessingContract.KEY_INPUT_URI) == selectedUri
+    val selectedSourceTag = selectedUri?.let(ProcessingContract::sourceTag)
+    val sourceWorkInfos = if (selectedSourceTag == null) emptyList() else {
+        workInfos.filter { selectedSourceTag in it.tags }
     }
     val workInfo = sourceWorkInfos.firstOrNull {
         it.state == WorkInfo.State.ENQUEUED ||
