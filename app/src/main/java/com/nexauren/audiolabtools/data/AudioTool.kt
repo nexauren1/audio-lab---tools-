@@ -12,7 +12,7 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
 }
 
 enum class ToolOperation {
-    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
+    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, REVERSE_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
 }
 
 data class AudioTool(
@@ -39,7 +39,7 @@ object AudioToolCatalog {
         AudioTool("join-audio", ToolCategory.EDIT, "Unir áudios", "Join audio files",
             "Juntar várias faixas numa só.", "Combine multiple tracks into one.", "＋", ToolOperation.JOIN_WAV),
         AudioTool("reverse-audio", ToolCategory.EDIT, "Inverter áudio", "Reverse audio",
-            "Reproduzir o áudio do fim para o início.", "Reverse the direction of the audio.", "↶", ToolOperation.NOT_READY),
+            "Reproduzir o áudio do fim para o início.", "Reverse the direction of the audio.", "↶", ToolOperation.REVERSE_WAV),
         AudioTool("fade-in", ToolCategory.EDIT, "Entrada gradual", "Fade in",
             "Aumentar o volume gradualmente no início.", "Gradually raise the volume at the beginning.", "◜", ToolOperation.NOT_READY),
         AudioTool("fade-out", ToolCategory.EDIT, "Saída gradual", "Fade out",
