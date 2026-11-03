@@ -12,7 +12,7 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
 }
 
 enum class ToolOperation {
-    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, REVERSE_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
+    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, REVERSE_WAV, FADE_IN_WAV, FADE_OUT_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
 }
 
 data class AudioTool(
@@ -41,9 +41,9 @@ object AudioToolCatalog {
         AudioTool("reverse-audio", ToolCategory.EDIT, "Inverter áudio", "Reverse audio",
             "Reproduzir o áudio do fim para o início.", "Reverse the direction of the audio.", "↶", ToolOperation.REVERSE_WAV),
         AudioTool("fade-in", ToolCategory.EDIT, "Entrada gradual", "Fade in",
-            "Aumentar o volume gradualmente no início.", "Gradually raise the volume at the beginning.", "◜", ToolOperation.NOT_READY),
+            "Aumentar o volume gradualmente no início.", "Gradually raise the volume at the beginning.", "◜", ToolOperation.FADE_IN_WAV),
         AudioTool("fade-out", ToolCategory.EDIT, "Saída gradual", "Fade out",
-            "Reduzir o volume gradualmente no fim.", "Gradually lower the volume at the end.", "◝", ToolOperation.NOT_READY),
+            "Reduzir o volume gradualmente no fim.", "Gradually lower the volume at the end.", "◝", ToolOperation.FADE_OUT_WAV),
         AudioTool("change-speed", ToolCategory.EDIT, "Alterar velocidade", "Change speed",
             "Acelerar ou desacelerar uma faixa.", "Speed up or slow down a track.", "⏩", ToolOperation.NOT_READY),
         AudioTool("extract-channel", ToolCategory.EDIT, "Separar canais", "Extract channels",
