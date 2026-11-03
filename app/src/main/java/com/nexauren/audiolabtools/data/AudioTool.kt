@@ -6,13 +6,14 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
     EDIT("Edição", "Editing", "✂"),
     CONVERT("Conversão", "Conversion", "⇄"),
     CLEAN("Limpeza", "Cleaning", "⌁"),
+    EFFECTS("Efeitos", "Effects", "✧"),
     ANALYZE("Análise", "Analysis", "◉"),
     METADATA("Metadados", "Metadata", "ⓘ"),
     BATCH("Em lote", "Batch", "▦")
 }
 
 enum class ToolOperation {
-    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, REVERSE_WAV, FADE_IN_WAV, FADE_OUT_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
+    INSPECT_AUDIO, TRIM_WAV, SPLIT_WAV, JOIN_WAV, REVERSE_WAV, FADE_IN_WAV, FADE_OUT_WAV, ECHO_WAV, REVERB_WAV, NORMALIZE_WAV, GAIN_WAV, NOT_READY
 }
 
 data class AudioTool(
@@ -78,6 +79,11 @@ object AudioToolCatalog {
             "Controlar diferenças entre sons baixos e altos.", "Control the difference between quiet and loud audio.", "▥", ToolOperation.NOT_READY),
         AudioTool("peak-limiter", ToolCategory.CLEAN, "Limitador de pico", "Peak limiter",
             "Impedir picos acima do limite definido.", "Prevent peaks from exceeding a defined ceiling.", "⌃", ToolOperation.NOT_READY),
+
+        AudioTool("echo", ToolCategory.EFFECTS, "Eco (Echo)", "Echo",
+            "Adicionar repetições com atraso, feedback e mistura ajustáveis.", "Add repeats with adjustable delay, feedback and mix.", "〰", ToolOperation.ECHO_WAV),
+        AudioTool("reverb", ToolCategory.EFFECTS, "Reverberação", "Reverb",
+            "Criar espaço e cauda reverberante com controlo de intensidade.", "Create space and a reverb tail with adjustable decay and mix.", "✧", ToolOperation.REVERB_WAV),
 
         AudioTool("audio-info", ToolCategory.ANALYZE, "Informações do áudio", "Audio information",
             "Consultar formato, duração e propriedades técnicas.", "Inspect format, duration and technical properties.", "ⓘ", ToolOperation.INSPECT_AUDIO),
