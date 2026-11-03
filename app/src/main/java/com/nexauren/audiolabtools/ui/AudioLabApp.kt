@@ -111,7 +111,8 @@ fun AudioLabApp() {
             when (current) {
                 Destination.HOME -> HomeScreen(
                     onOpenTool = { tool -> openTool(tool.id) },
-                    onOpenProcessing = { destination = Destination.PROCESSING.name }
+                    onOpenProcessing = { destination = Destination.PROCESSING.name },
+                    onOpenLibrary = { destination = Destination.LIBRARY.name }
                 )
                 Destination.PROCESSING -> ProcessingScreen()
                 Destination.LIBRARY -> LibraryScreen(
