@@ -117,6 +117,10 @@ class WavProcessingWorker(
         val startMs = inputData.getLong(ProcessingContract.KEY_START_MS, 0L)
         val endMs = inputData.getLong(ProcessingContract.KEY_END_MS, 0L)
         val fadeDurationMs = inputData.getLong(ProcessingContract.KEY_FADE_MS, 1000L)
+        val echoDelayMs = inputData.getLong(ProcessingContract.KEY_DELAY_MS, 240L)
+        val effectFeedback = inputData.getDouble(ProcessingContract.KEY_FEEDBACK, 0.35)
+        val effectMix = inputData.getDouble(ProcessingContract.KEY_MIX, 0.35)
+        val reverbDecay = inputData.getDouble(ProcessingContract.KEY_DECAY, 0.65)
         val splitParts = inputData.getInt(ProcessingContract.KEY_SPLIT_PARTS, 2)
         val isArchive = toolId == "split-audio"
         val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME) ?: "audio.wav"
@@ -143,6 +147,8 @@ class WavProcessingWorker(
             toolId == "reverse-audio" -> "_reversed"
             toolId == "fade-in" -> "_fade_in"
             toolId == "fade-out" -> "_fade_out"
+            toolId == "echo" -> "_echo"
+            toolId == "reverb" -> "_reverb"
             normalize -> "_normalized"
             else -> "_gain"
         }
@@ -196,6 +202,8 @@ class WavProcessingWorker(
                         toolId == "reverse-audio" -> "Reversing audio frames"
                         toolId == "fade-in" -> "Applying fade in"
                         toolId == "fade-out" -> "Applying fade out"
+                        toolId == "echo" -> "Building echo delay line"
+                        toolId == "reverb" -> "Building reverb tail"
                         progress < 25 -> "Analysing audio peak"
                         else -> "Processing PCM samples"
                     }
@@ -224,6 +232,21 @@ class WavProcessingWorker(
                     destination = outputFile,
                     fadeIn = toolId == "fade-in",
                     fadeDurationMs = fadeDurationMs,
+                    onProgress = reportProgress
+                )
+                toolId == "echo" -> WavPcmProcessor.echo(
+                    source = sourceCopies.first(),
+                    destination = outputFile,
+                    delayMs = echoDelayMs,
+                    feedback = effectFeedback,
+                    mix = effectMix,
+                    onProgress = reportProgress
+                )
+                toolId == "reverb" -> WavPcmProcessor.reverb(
+                    source = sourceCopies.first(),
+                    destination = outputFile,
+                    decay = reverbDecay,
+                    mix = effectMix,
                     onProgress = reportProgress
                 )
                 isArchive -> {
