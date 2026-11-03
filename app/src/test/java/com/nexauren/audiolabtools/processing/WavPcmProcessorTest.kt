@@ -72,7 +72,39 @@ class WavPcmProcessorTest {
         }
     }
 
-    private fun writePcm16Wav(file: File, samples: ShortArray) {
+
+    @Test
+    fun trimExportsOnlyRequestedFrames() = runBlocking {
+        val folder = createTempDir(prefix = "audio-lab-test-")
+        try {
+            val input = File(folder, "input.wav")
+            val output = File(folder, "trimmed.wav")
+            writePcm16Wav(input, ShortArray(80) { it.toShort() }, sampleRate = 8000)
+
+            val summary = WavPcmProcessor.trim(
+                source = input,
+                destination = output,
+                startMs = 2L,
+                endMs = 8L,
+                onProgress = {}
+            )
+
+            RandomAccessFile(output, "r").use { wav ->
+                wav.seek(44)
+                assertEquals(16, wav.readShortLE().toInt())
+                var last = 0
+                repeat(47) { last = wav.readShortLE().toInt() }
+                assertEquals(63, last)
+            }
+            assertEquals(48L, summary.frames)
+            assertEquals(8000, summary.sampleRate)
+            assertTrue(output.length() < input.length())
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    private fun writePcm16Wav(file: File, samples: ShortArray, sampleRate: Int = 48000) {
         RandomAccessFile(file, "rw").use { wav ->
             val dataSize = samples.size * 2
             wav.writeBytes("RIFF")
@@ -81,8 +113,8 @@ class WavPcmProcessorTest {
             wav.writeUInt32(16)
             wav.writeUInt16(1)
             wav.writeUInt16(1)
-            wav.writeUInt32(48000)
-            wav.writeUInt32(96000)
+            wav.writeUInt32(sampleRate.toLong())
+            wav.writeUInt32(sampleRate.toLong() * 2L)
             wav.writeUInt16(2)
             wav.writeUInt16(16)
             wav.writeBytes("data")
