@@ -13,6 +13,7 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
 
 enum class ToolOperation {
     INSPECT_AUDIO,
+    TRIM_WAV,
     NORMALIZE_WAV,
     GAIN_WAV,
     NOT_READY
@@ -37,8 +38,8 @@ data class AudioTool(
 object AudioToolCatalog {
     val tools = listOf(
         AudioTool("trim-audio", ToolCategory.EDIT, "Cortar áudio", "Trim audio",
-            "Definir início e fim e guardar um novo ficheiro.", "Set start and end points and save a new file.",
-            "✂", ToolOperation.NOT_READY),
+            "Definir início e fim e exportar apenas o trecho escolhido.", "Set start and end points and export only the selected section.",
+            "✂", ToolOperation.TRIM_WAV),
         AudioTool("split-audio", ToolCategory.EDIT, "Dividir áudio", "Split audio",
             "Separar um ficheiro em várias partes.", "Split one file into separate parts.",
             "⋈", ToolOperation.NOT_READY),
