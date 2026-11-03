@@ -220,6 +220,58 @@ class WavPcmProcessorTest {
         }
     }
 
+    @Test
+    fun fadeInAndOutApplyTheEnvelopeToWholeStereoFrames() = runBlocking {
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
+        try {
+            val input = File(folder, "stereo.wav")
+            val fadeInOutput = File(folder, "fade-in.wav")
+            val fadeOutOutput = File(folder, "fade-out.wav")
+            val samples = ShortArray(160) { if (it % 2 == 0) 10000 else -10000 }
+            writeStereoPcm16Wav(input, samples, sampleRate = 8000)
+
+            val fadeInSummary = WavPcmProcessor.fade(
+                source = input,
+                destination = fadeInOutput,
+                fadeIn = true,
+                fadeDurationMs = 5L,
+                onProgress = {}
+            )
+            val fadeOutSummary = WavPcmProcessor.fade(
+                source = input,
+                destination = fadeOutOutput,
+                fadeIn = false,
+                fadeDurationMs = 5L,
+                onProgress = {}
+            )
+
+            RandomAccessFile(fadeInOutput, "r").use { wav ->
+                wav.seek(44)
+                val firstLeft = wav.readShortLE().toInt()
+                val firstRight = wav.readShortLE().toInt()
+                assertEquals(0, firstLeft)
+                assertEquals(0, firstRight)
+                wav.seek(44L + 39L * 4L)
+                val finalFadeLeft = wav.readShortLE().toInt()
+                val finalFadeRight = wav.readShortLE().toInt()
+                assertTrue(finalFadeLeft > 9900)
+                assertTrue(finalFadeRight < -9900)
+            }
+
+            RandomAccessFile(fadeOutOutput, "r").use { wav ->
+                wav.seek(44L + 79L * 4L)
+                assertEquals(0, wav.readShortLE().toInt())
+                assertEquals(0, wav.readShortLE().toInt())
+            }
+            assertEquals(2, fadeInSummary.channels)
+            assertEquals(2, fadeOutSummary.channels)
+            assertEquals(80L, fadeInSummary.frames)
+            assertEquals(80L, fadeOutSummary.frames)
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
     private fun readRiffHeader(file: File): String =
         RandomAccessFile(file, "r").use {
             val bytes = ByteArray(4)
