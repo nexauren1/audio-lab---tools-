@@ -24,7 +24,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -406,18 +405,7 @@ private fun CategoryExplorer(
         FilterChip(
             selected = selectedCategory == "ALL",
             onClick = { onSelect("ALL") },
-            label = { Text(localized("Todas", "All", isPt), fontSize = 11.sp) },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = Color(0xFF143F69),
-                selectedLabelColor = AudioLabPalette.Cyan,
-                labelColor = AudioLabPalette.Muted
-            ),
-            border = FilterChipDefaults.filterChipBorder(
-                enabled = true,
-                selected = selectedCategory == "ALL",
-                borderColor = AudioLabPalette.Border,
-                selectedBorderColor = AudioLabPalette.Cyan
-            )
+            label = { Text(localized("Todas", "All", isPt), fontSize = 11.sp) }
         )
         ToolCategory.entries.forEach { category ->
             val selected = selectedCategory == category.name
@@ -430,20 +418,7 @@ private fun CategoryExplorer(
                         fontSize = 11.sp
                     )
                 },
-                leadingIcon = { Text(category.symbol, fontSize = 13.sp) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF143F69),
-                    selectedLabelColor = AudioLabPalette.Cyan,
-                    labelColor = AudioLabPalette.Muted,
-                    selectedLeadingIconColor = AudioLabPalette.Cyan,
-                    leadingIconColor = AudioLabPalette.Muted
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true,
-                    selected = selected,
-                    borderColor = AudioLabPalette.Border,
-                    selectedBorderColor = AudioLabPalette.Cyan
-                )
+                leadingIcon = { Text(category.symbol, fontSize = 13.sp) }
             )
         }
     }
