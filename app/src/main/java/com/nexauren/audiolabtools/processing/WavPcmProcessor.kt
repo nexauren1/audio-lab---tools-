@@ -328,6 +328,72 @@ object WavPcmProcessor {
         )
     }
 
+    /**
+     * Reverses time-frame order while preserving the samples inside each
+     * multi-channel frame. Reads backward in bounded, frame-aligned blocks.
+     */
+    suspend fun reverse(
+        source: File,
+        destination: File,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        require(info.dataSize <= 0xFFFF_FFFFL - 37L) {
+            "This WAV file is too large for standard RIFF output."
+        }
+
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames > 0L) { "The selected WAV file contains no audio frames." }
+        destination.parentFile?.mkdirs()
+
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info)
+                val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+                val buffer = ByteArray(framesPerBlock * info.blockAlign)
+                var remainingFrames = totalFrames
+                var reversedFrames = 0L
+                var lastProgress = -1
+
+                onProgress(0)
+                while (remainingFrames > 0L) {
+                    currentCoroutineContext().ensureActive()
+                    val countFrames = minOf(framesPerBlock.toLong(), remainingFrames).toInt()
+                    val firstFrame = remainingFrames - countFrames
+                    val byteCount = countFrames * info.blockAlign
+                    input.seek(info.dataOffset + firstFrame * info.blockAlign)
+                    input.readFully(buffer, 0, byteCount)
+
+                    for (frameIndex in countFrames - 1 downTo 0) {
+                        output.write(buffer, frameIndex * info.blockAlign, info.blockAlign)
+                    }
+
+                    remainingFrames -= countFrames
+                    reversedFrames += countFrames
+                    val progress = (reversedFrames * 100L / totalFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (info.dataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = totalFrames,
+            appliedGain = 1.0
+        )
+    }
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
