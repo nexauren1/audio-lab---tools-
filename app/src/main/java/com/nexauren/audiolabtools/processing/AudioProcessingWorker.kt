@@ -100,12 +100,20 @@ class WavProcessingWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val uri = inputData.getString(ProcessingContract.KEY_INPUT_URI)?.let(Uri::parse)
-            ?: return Result.failure(workDataOf(ProcessingContract.KEY_ERROR to "No audio file was selected."))
+        val toolId = inputData.getString(ProcessingContract.KEY_TOOL_ID).orEmpty()
+        val sourceUris = if (toolId == "join-audio") {
+            inputData.getStringArray(ProcessingContract.KEY_INPUT_URIS)
+                ?.map { Uri.parse(it) }.orEmpty()
+        } else {
+            inputData.getString(ProcessingContract.KEY_INPUT_URI)
+                ?.let { listOf(Uri.parse(it)) }.orEmpty()
+        }
+        if (sourceUris.isEmpty()) {
+            return Result.failure(workDataOf(ProcessingContract.KEY_ERROR to "No audio file was selected."))
+        }
 
         val normalize = inputData.getBoolean(ProcessingContract.KEY_NORMALIZE, false)
         val gainDb = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 0.0)
-        val toolId = inputData.getString(ProcessingContract.KEY_TOOL_ID).orEmpty()
         val startMs = inputData.getLong(ProcessingContract.KEY_START_MS, 0L)
         val endMs = inputData.getLong(ProcessingContract.KEY_END_MS, 0L)
         val splitParts = inputData.getInt(ProcessingContract.KEY_SPLIT_PARTS, 2)
@@ -126,10 +134,11 @@ class WavProcessingWorker(
         cacheFolder.mkdirs()
         exportFolder.mkdirs()
 
-        val sourceCopy = File.createTempFile("source_", ".wav", cacheFolder)
+        val sourceCopies = mutableListOf<File>()
         val suffix = when {
             toolId == "trim-audio" -> "_trimmed"
-            isArchive -> "_parts"
+            toolId == "split-audio" -> "_parts"
+            toolId == "join-audio" -> "_joined"
             normalize -> "_normalized"
             else -> "_gain"
         }
@@ -146,18 +155,23 @@ class WavProcessingWorker(
             ))
 
             withContext(Dispatchers.IO) {
-                val source = applicationContext.contentResolver.openInputStream(uri)
-                    ?: throw IllegalArgumentException("Android could not open this audio file.")
-                source.use { input ->
-                    FileOutputStream(sourceCopy).use { output ->
-                        val buffer = ByteArray(128 * 1024)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
+                val buffer = ByteArray(128 * 1024)
+                sourceUris.forEachIndexed { index, sourceUri ->
+                    currentCoroutineContext().ensureActive()
+                    val sourceCopy = File.createTempFile("source_", ".wav", cacheFolder)
+                    sourceCopies += sourceCopy
+                    val source = applicationContext.contentResolver.openInputStream(sourceUri)
+                        ?: throw IllegalArgumentException("Android could not open selected audio file ${index + 1}.")
+                    source.use { input ->
+                        FileOutputStream(sourceCopy).use { output ->
+                            while (true) {
+                                currentCoroutineContext().ensureActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                output.write(buffer, 0, count)
+                            }
+                            output.fd.sync()
                         }
-                        output.fd.sync()
                     }
                 }
             }
@@ -181,15 +195,20 @@ class WavProcessingWorker(
             }
             val summary = when {
                 toolId == "trim-audio" -> WavPcmProcessor.trim(
-                    source = sourceCopy,
+                    source = sourceCopies.first(),
                     destination = outputFile,
                     startMs = startMs,
                     endMs = endMs,
                     onProgress = reportProgress
                 )
+                toolId == "join-audio" -> WavPcmProcessor.join(
+                    sources = sourceCopies,
+                    destination = outputFile,
+                    onProgress = reportProgress
+                )
                 isArchive -> {
                     val parts = WavPcmProcessor.splitIntoParts(
-                        source = sourceCopy,
+                        source = sourceCopies.first(),
                         outputFolder = splitFolder,
                         baseName = safeBase,
                         partCount = splitParts
@@ -223,7 +242,7 @@ class WavProcessingWorker(
                     null
                 }
                 else -> WavPcmProcessor.process(
-                    source = sourceCopy,
+                    source = sourceCopies.first(),
                     destination = outputFile,
                     normalize = normalize,
                     gainDb = gainDb,
@@ -264,7 +283,7 @@ class WavProcessingWorker(
                     (error.message ?: "Audio processing failed."))
             )
         } finally {
-            sourceCopy.delete()
+            sourceCopies.forEach { it.delete() }
             splitFolder.deleteRecursively()
         }
     }
