@@ -5,7 +5,7 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 ## 1. Entering a tool
 
 - Open the tool screen and load its configuration.
-- Restore the selected source and unsaved settings while that screen remains in the navigation state.
+- Restore the selected source and unsaved settings when the user leaves and reopens a tool.
 - Validate supported input types and show the supported formats before the user starts.
 - Do not begin destructive or expensive processing just because the screen opened.
 
@@ -23,6 +23,7 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 - Navigating back does not enqueue a second job.
 - The worker owns its input and temporary files for the duration of the operation.
 - The processing queue remains available from the main navigation.
+- The selected source remains available when reopening the same tool; opening a tool is setup only, never a new processing request.
 
 ## 4. Returning to the app
 
