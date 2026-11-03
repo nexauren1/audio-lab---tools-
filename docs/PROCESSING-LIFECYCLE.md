@@ -5,7 +5,7 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 ## 1. Entering a tool
 
 - Open the tool screen and load its configuration.
-- Restore the selected source and unsaved settings while that screen remains in the navigation state.
+- Restore the selected source and unsaved settings when the user leaves and reopens a tool.
 - Validate supported input types and show the supported formats before the user starts.
 - Do not begin destructive or expensive processing just because the screen opened.
 
@@ -13,9 +13,15 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 
 - Require an explicit user action.
 - Validate source URI access, file type, options and destination before enqueueing.
+- For split jobs, validate the requested part count (2–20), WAV PCM format and frame availability before writing any published result.
+- For multi-file join jobs, validate all sources use the same sample rate, channel count and bit depth.
+- For reverse jobs, reverse whole PCM frames so left/right channel samples remain aligned.
+- For echo and reverb jobs, keep delay memory isolated per channel and validate all effect parameters before the worker starts.
+- Animate progress from WorkManager progress values; an activity spinner may rotate while the worker is actually running, but must never invent percentage progress.
 - Submit a uniquely named WorkManager job with a tool tag.
 - Disable repeated taps while submission is being confirmed.
 - Show stages and progress from the worker rather than inventing progress in the UI.
+- Navigation and panel transitions may animate, but must not add artificial delays to file processing or page changes.
 
 ## 3. Leaving a tool
 
@@ -23,11 +29,13 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 - Navigating back does not enqueue a second job.
 - The worker owns its input and temporary files for the duration of the operation.
 - The processing queue remains available from the main navigation.
+- The selected source remains available when reopening the same tool; opening a tool is setup only, never a new processing request.
 
 ## 4. Returning to the app
 
-- Observe the existing WorkManager job by its unique work name or processing tag.
+- Observe the existing WorkManager job by its processing tag and match it to the selected source URI.
 - Display its real state: queued, running, succeeded, failed or cancelled.
+- Keep independent files independent: a job for one source must not block or masquerade as the status of another source.
 - Never restart a job automatically on Activity recreation, app resume or return navigation.
 - Offer an explicit retry action only after a failed or completed job.
 

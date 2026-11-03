@@ -17,11 +17,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +33,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,15 +61,41 @@ fun ToolDetailScreen(
     tool: AudioTool,
     initialUri: String?,
     initialName: String?,
+    onSourceSelected: (String, String) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val isPt = isPortuguese()
     val workManager = WorkManager.getInstance(context)
 
-    var selectedUri by rememberSaveable(tool.id, initialUri) { mutableStateOf(initialUri) }
-    var sourceName by rememberSaveable(tool.id, initialName) { mutableStateOf(initialName.orEmpty()) }
+    val validInitialUri = initialUri?.takeIf {
+        tool.id == "join-audio" || !it.contains("\n")
+    }
+    var selectedUri by rememberSaveable(tool.id, validInitialUri) { mutableStateOf(validInitialUri) }
+    var sourceName by rememberSaveable(tool.id, initialName) {
+        mutableStateOf(if (validInitialUri != null) initialName.orEmpty() else "")
+    }
     var gainDb by rememberSaveable(tool.id) { mutableStateOf(3f) }
+    var trimStartSeconds by rememberSaveable(tool.id) { mutableStateOf("0") }
+    var trimEndSeconds by rememberSaveable(tool.id) { mutableStateOf("10") }
+    var splitPartCount by rememberSaveable(tool.id) { mutableStateOf("3") }
+    var fadeDurationSeconds by rememberSaveable(tool.id) { mutableStateOf("1.0") }
+    var echoDelayMs by rememberSaveable(tool.id) { mutableStateOf(240f) }
+    var echoFeedback by rememberSaveable(tool.id) { mutableStateOf(0.38f) }
+    var effectMix by rememberSaveable(tool.id) { mutableStateOf(0.4f) }
+    var reverbDecay by rememberSaveable(tool.id) { mutableStateOf(0.68f) }
+
+    val trimStartMs = trimStartSeconds.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.times(1000.0)?.toLong()
+    val trimEndMs = trimEndSeconds.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.times(1000.0)?.toLong()
+    val trimRangeValid = trimStartMs != null && trimEndMs != null && trimEndMs > trimStartMs
+    val splitParts = splitPartCount.toIntOrNull()?.takeIf { it in 2..20 }
+    val fadeDurationMs = fadeDurationSeconds.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it in 0.001..60.0 }
+        ?.times(1000.0)?.toLong()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -77,6 +109,29 @@ fun ToolDetailScreen(
             }
             selectedUri = uri.toString()
             sourceName = queryDisplayName(context, uri)
+            onSourceSelected(selectedUri!!, sourceName)
+        }
+    }
+
+
+    val multiPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.size in 2..20) {
+            uris.forEach { uri ->
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) {
+                    // Some providers do not offer persistable grants; current selections remain usable.
+                }
+            }
+            val sourceKey = uris.joinToString("\n") { it.toString() }
+            selectedUri = sourceKey
+            sourceName = "joined_" + uris.size + "_files.wav"
+            onSourceSelected(sourceKey, sourceName)
         }
     }
 
@@ -84,12 +139,18 @@ fun ToolDetailScreen(
         ProcessingContract.toolTag(tool.id)
     )
     val workInfos by workInfosLiveData.observeAsState(initial = emptyList())
-    val workInfo = workInfos.firstOrNull {
+    // A tool screen only observes jobs for its currently selected source file.
+    // Other files may be processed independently in the background.
+    val selectedSourceTag = selectedUri?.let(ProcessingContract::sourceTag)
+    val sourceWorkInfos = if (selectedSourceTag == null) emptyList() else {
+        workInfos.filter { selectedSourceTag in it.tags }
+    }
+    val workInfo = sourceWorkInfos.firstOrNull {
         it.state == WorkInfo.State.ENQUEUED ||
             it.state == WorkInfo.State.RUNNING ||
             it.state == WorkInfo.State.BLOCKED
-    } ?: workInfos.lastOrNull()
-    val isProcessing = workInfos.any {
+    } ?: sourceWorkInfos.lastOrNull()
+    val isProcessing = sourceWorkInfos.any {
         it.state == WorkInfo.State.ENQUEUED ||
             it.state == WorkInfo.State.RUNNING ||
             it.state == WorkInfo.State.BLOCKED
@@ -100,6 +161,7 @@ fun ToolDetailScreen(
             .fillMaxSize()
             .padding(horizontal = 18.dp)
             .padding(top = 14.dp, bottom = 24.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -151,7 +213,7 @@ fun ToolDetailScreen(
 
         Spacer(Modifier.height(22.dp))
         if (!tool.isAvailable) {
-            NotReadyPanel(isPt)
+            NotReadyPanel(tool, isPt)
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -178,7 +240,13 @@ fun ToolDetailScreen(
                     )
                     Spacer(Modifier.height(14.dp))
                     Button(
-                        onClick = { picker.launch(arrayOf("audio/*")) },
+                        onClick = {
+                            if (tool.operation == ToolOperation.JOIN_WAV) {
+                                multiPicker.launch(arrayOf("audio/*"))
+                            } else {
+                                picker.launch(arrayOf("audio/*"))
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF172A47),
@@ -202,14 +270,22 @@ fun ToolDetailScreen(
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    sourceName.ifBlank { "Audio file" },
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        localized(
+                                            (selectedUri?.split("\n")?.size ?: 0).toString() + " ficheiros selecionados",
+                                            (selectedUri?.split("\n")?.size ?: 0).toString() + " files selected",
+                                            isPt
+                                        )
+                                    } else sourceName.ifBlank { "Audio file" },
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 2
                                 )
                                 Text(
-                                    selectedUri!!.substringBefore("?").take(54),
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        localized("Os WAV serão unidos pela ordem selecionada.", "WAV files will be joined in the selected order.", isPt)
+                                    } else selectedUri!!.substringBefore("?").take(54),
                                     color = AudioLabPalette.Muted,
                                     fontSize = 9.sp,
                                     maxLines = 1
@@ -217,9 +293,300 @@ fun ToolDetailScreen(
                             }
                             TextButtonLike(
                                 text = localized("Trocar", "Change", isPt),
-                                onClick = { picker.launch(arrayOf("audio/*")) }
+                                onClick = {
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        multiPicker.launch(arrayOf("audio/*"))
+                                    } else {
+                                        picker.launch(arrayOf("audio/*"))
+                                    }
+                                }
                             )
                         }
+                    }
+                }
+            }
+
+
+            if (tool.operation == ToolOperation.TRIM_WAV) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Intervalo do corte", "Trim range", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            localized(
+                                "Define o início e o fim em segundos. O ficheiro original fica intacto.",
+                                "Set the start and end in seconds. The original file remains untouched.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = trimStartSeconds,
+                                onValueChange = { trimStartSeconds = it.filter { ch -> ch.isDigit() || ch == '.' }.take(9) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(localized("Início (s)", "Start (s)")) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = AudioLabPalette.Cyan,
+                                    unfocusedBorderColor = AudioLabPalette.Border,
+                                    focusedLabelColor = AudioLabPalette.Cyan,
+                                    unfocusedLabelColor = AudioLabPalette.Muted,
+                                    cursorColor = AudioLabPalette.Cyan
+                                )
+                            )
+                            OutlinedTextField(
+                                value = trimEndSeconds,
+                                onValueChange = { trimEndSeconds = it.filter { ch -> ch.isDigit() || ch == '.' }.take(9) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(localized("Fim (s)", "End (s)")) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = AudioLabPalette.Cyan,
+                                    unfocusedBorderColor = AudioLabPalette.Border,
+                                    focusedLabelColor = AudioLabPalette.Cyan,
+                                    unfocusedLabelColor = AudioLabPalette.Muted,
+                                    cursorColor = AudioLabPalette.Cyan
+                                )
+                            )
+                        }
+                        if (!trimRangeValid) {
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                localized("O fim deve ser maior que o início.", "End must be greater than start."),
+                                color = Color(0xFFFF8797),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+
+            if (tool.operation == ToolOperation.JOIN_WAV) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Unir vários ficheiros", "Join multiple files", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            localized(
+                                "Seleciona entre 2 e 20 WAV PCM. Todos devem ter a mesma taxa de amostragem, canais e profundidade de bits.",
+                                "Select 2–20 PCM WAV files. All must have the same sample rate, channels and bit depth.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            if (tool.operation == ToolOperation.SPLIT_WAV) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Número de partes", "Number of parts", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(9.dp))
+                        OutlinedTextField(
+                            value = splitPartCount,
+                            onValueChange = { splitPartCount = it.filter(Char::isDigit).take(2) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Partes (2–20)", "Parts (2–20)")) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AudioLabPalette.Cyan,
+                                unfocusedBorderColor = AudioLabPalette.Border,
+                                focusedLabelColor = AudioLabPalette.Cyan,
+                                unfocusedLabelColor = AudioLabPalette.Muted,
+                                cursorColor = AudioLabPalette.Cyan
+                            )
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            localized(
+                                "As partes terão durações praticamente iguais. O resultado será um ZIP com os ficheiros WAV separados.",
+                                "Parts will have nearly equal durations. The result is a ZIP containing separate WAV files.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            if (tool.operation == ToolOperation.FADE_IN_WAV ||
+                tool.operation == ToolOperation.FADE_OUT_WAV
+            ) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Duração da transição", "Fade duration", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = fadeDurationSeconds,
+                            onValueChange = {
+                                fadeDurationSeconds = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Segundos (0,001–60)", "Seconds (0.001–60)")) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AudioLabPalette.Cyan,
+                                unfocusedBorderColor = AudioLabPalette.Border,
+                                focusedLabelColor = AudioLabPalette.Cyan,
+                                unfocusedLabelColor = AudioLabPalette.Muted,
+                                cursorColor = AudioLabPalette.Cyan
+                            )
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            localized(
+                                "A transição é aplicada aos primeiros ou últimos segundos da faixa. O original fica intacto.",
+                                "The fade is applied to the first or last seconds of the track. The original remains untouched.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            if (tool.operation == ToolOperation.ECHO_WAV ||
+                tool.operation == ToolOperation.REVERB_WAV
+            ) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF15152F)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF784D91))
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("✧", color = Color(0xFFFF79C6), fontSize = 22.sp)
+                            Spacer(Modifier.width(9.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    localized("Controlos de efeito", "Effect controls", isPt),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    localized("Processamento espacial em WAV PCM", "Spatial processing on PCM WAV", isPt),
+                                    color = AudioLabPalette.Muted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Text(
+                                if (tool.operation == ToolOperation.ECHO_WAV) "ECHO" else "REVERB",
+                                color = Color(0xFFFF79C6),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+
+                        if (tool.operation == ToolOperation.ECHO_WAV) {
+                            EffectSlider(
+                                label = localized("Tempo de atraso", "Delay time", isPt),
+                                value = echoDelayMs,
+                                valueText = echoDelayMs.toInt().toString() + " ms",
+                                range = 40f..1000f,
+                                steps = 47,
+                                onValueChange = { echoDelayMs = it }
+                            )
+                            EffectSlider(
+                                label = localized("Feedback / repetições", "Feedback / repeats", isPt),
+                                value = echoFeedback,
+                                valueText = String.format(Locale.US, "%.2f", echoFeedback),
+                                range = 0f..0.7f,
+                                steps = 13,
+                                onValueChange = { echoFeedback = it }
+                            )
+                        } else {
+                            EffectSlider(
+                                label = localized("Decaimento", "Decay", isPt),
+                                value = reverbDecay,
+                                valueText = String.format(Locale.US, "%.2f", reverbDecay),
+                                range = 0.1f..0.9f,
+                                steps = 15,
+                                onValueChange = { reverbDecay = it }
+                            )
+                        }
+                        EffectSlider(
+                            label = localized("Mistura wet", "Wet mix", isPt),
+                            value = effectMix,
+                            valueText = String.format(Locale.US, "%.0f%%", effectMix * 100f),
+                            range = 0f..1f,
+                            steps = 19,
+                            onValueChange = { effectMix = it }
+                        )
+                        Text(
+                            localized(
+                                "O efeito é aplicado por canal, sem misturar o canal esquerdo com o direito. O resultado é exportado como um novo WAV.",
+                                "The effect is applied per channel without mixing left and right. The result is exported as a new WAV.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
                     }
                 }
             }
@@ -271,6 +638,41 @@ fun ToolDetailScreen(
                     "Accepts audio files that Android can read.",
                     isPt
                 )
+                ToolOperation.TRIM_WAV -> localized(
+                    "Corte WAV PCM inteiro de 8, 16, 24 ou 32 bits. O intervalo é alinhado a frames de áudio completos.",
+                    "Trim 8, 16, 24 or 32-bit integer PCM WAV. The range is aligned to complete audio frames.",
+                    isPt
+                )
+                ToolOperation.SPLIT_WAV -> localized(
+                    "Divisão WAV PCM inteiro de 8, 16, 24 ou 32 bits. O resultado é um ficheiro ZIP com os segmentos.",
+                    "Split 8, 16, 24 or 32-bit integer PCM WAV. The result is a ZIP archive containing the segments.",
+                    isPt
+                )
+                ToolOperation.JOIN_WAV -> localized(
+                    "União de 2 a 20 WAV PCM inteiros. Todos os ficheiros têm de ter a mesma taxa de amostragem, canais e profundidade de bits.",
+                    "Join 2–20 integer PCM WAV files. Every file must have the same sample rate, channel count and bit depth.",
+                    isPt
+                )
+                ToolOperation.REVERSE_WAV -> localized(
+                    "Inverte a ordem dos frames do WAV PCM, mantendo os canais e os samples de cada frame juntos. Aceita PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Reverses WAV PCM frame order while keeping channels and samples in each frame together. Supports 8, 16, 24 or 32-bit integer PCM.",
+                    isPt
+                )
+                ToolOperation.FADE_IN_WAV, ToolOperation.FADE_OUT_WAV -> localized(
+                    "Transição linear de volume por frames, preservando os canais. Aceita WAV PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Linear frame-based volume fade that preserves channels. Supports 8, 16, 24 or 32-bit integer PCM WAV.",
+                    isPt
+                )
+                ToolOperation.ECHO_WAV -> localized(
+                    "Eco para WAV PCM inteiro de 8, 16, 24 ou 32 bits. Atraso entre 40 e 1000 ms, feedback limitado e linha de atraso independente por canal.",
+                    "Echo for 8, 16, 24 or 32-bit integer PCM WAV. Delay from 40 to 1000 ms, bounded feedback and a separate delay line per channel.",
+                    isPt
+                )
+                ToolOperation.REVERB_WAV -> localized(
+                    "Reverberação por três linhas de atraso com feedback, cauda e mistura ajustáveis. WAV PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Three-delay feedback reverb with adjustable decay tail and wet mix. Supports 8, 16, 24 or 32-bit integer PCM WAV.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -283,24 +685,72 @@ fun ToolDetailScreen(
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
-                    val uri = selectedUri?.let(Uri::parse) ?: return@Button
+                    val sourceKey = selectedUri ?: return@Button
+                    val uri = if (tool.operation == ToolOperation.JOIN_WAV) null else Uri.parse(sourceKey)
                     when (tool.operation) {
                         ToolOperation.INSPECT_AUDIO ->
-                            AudioWorkScheduler.enqueueInspection(context, uri, sourceName)
+                            AudioWorkScheduler.enqueueInspection(context, uri ?: return@Button, sourceName)
                         ToolOperation.NORMALIZE_WAV ->
                             AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = true, gainDb = 0.0
+                                context, uri ?: return@Button, sourceName, tool.id, normalize = true, gainDb = 0.0
                             )
                         ToolOperation.GAIN_WAV ->
                             AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = false, gainDb = gainDb.toDouble()
+                                context, uri ?: return@Button, sourceName, tool.id, normalize = false, gainDb = gainDb.toDouble()
                             )
+                        ToolOperation.TRIM_WAV ->
+                            AudioWorkScheduler.enqueueWavTrim(
+                                context, uri ?: return@Button, sourceName,
+                                startMs = trimStartMs ?: return@Button,
+                                endMs = trimEndMs ?: return@Button
+                            )
+                        ToolOperation.SPLIT_WAV ->
+                            AudioWorkScheduler.enqueueWavSplit(
+                                context, uri ?: return@Button, sourceName,
+                                partCount = splitParts ?: return@Button
+                            )
+                        ToolOperation.JOIN_WAV -> AudioWorkScheduler.enqueueWavJoin(
+                            context,
+                            sourceKey.split("\n").map { Uri.parse(it) },
+                            sourceName
+                        )
+                        ToolOperation.REVERSE_WAV -> AudioWorkScheduler.enqueueWavOperation(
+                            context, uri ?: return@Button, sourceName,
+                            tool.id, normalize = false, gainDb = 0.0
+                        )
+                        ToolOperation.FADE_IN_WAV, ToolOperation.FADE_OUT_WAV ->
+                            AudioWorkScheduler.enqueueWavFade(
+                                context, uri ?: return@Button, sourceName,
+                                fadeIn = tool.operation == ToolOperation.FADE_IN_WAV,
+                                fadeDurationMs = fadeDurationMs ?: return@Button
+                            )
+                        ToolOperation.ECHO_WAV -> AudioWorkScheduler.enqueueWavEcho(
+                            context,
+                            uri ?: return@Button,
+                            sourceName,
+                            delayMs = echoDelayMs.toLong(),
+                            feedback = echoFeedback.toDouble(),
+                            mix = effectMix.toDouble()
+                        )
+                        ToolOperation.REVERB_WAV -> AudioWorkScheduler.enqueueWavReverb(
+                            context,
+                            uri ?: return@Button,
+                            sourceName,
+                            decay = reverbDecay.toDouble(),
+                            mix = effectMix.toDouble()
+                        )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
                 enabled = selectedUri != null && !isProcessing &&
                     (tool.operation == ToolOperation.INSPECT_AUDIO ||
-                        sourceName.endsWith(".wav", ignoreCase = true)),
+                        sourceName.endsWith(".wav", ignoreCase = true)) &&
+                    (tool.operation != ToolOperation.JOIN_WAV ||
+                        sourceKeyCount(selectedUri) in 2..20) &&
+                    (tool.operation != ToolOperation.TRIM_WAV || trimRangeValid) &&
+                    (tool.operation != ToolOperation.SPLIT_WAV || splitParts != null) &&
+                    ((tool.operation != ToolOperation.FADE_IN_WAV &&
+                        tool.operation != ToolOperation.FADE_OUT_WAV) || fadeDurationMs != null),
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1769D2),
@@ -315,6 +765,14 @@ fun ToolDetailScreen(
                         ToolOperation.INSPECT_AUDIO -> localized("Analisar ficheiro", "Analyse file", isPt)
                         ToolOperation.NORMALIZE_WAV -> localized("Normalizar áudio", "Normalize audio", isPt)
                         ToolOperation.GAIN_WAV -> localized("Aplicar ganho", "Apply gain", isPt)
+                        ToolOperation.TRIM_WAV -> localized("Cortar e exportar trecho", "Trim and export section", isPt)
+                        ToolOperation.SPLIT_WAV -> localized("Dividir e exportar ZIP", "Split and export ZIP", isPt)
+                        ToolOperation.JOIN_WAV -> localized("Unir e exportar WAV", "Join and export WAV", isPt)
+                        ToolOperation.REVERSE_WAV -> localized("Inverter e exportar WAV", "Reverse and export WAV", isPt)
+                        ToolOperation.FADE_IN_WAV -> localized("Aplicar entrada gradual", "Apply fade in", isPt)
+                        ToolOperation.FADE_OUT_WAV -> localized("Aplicar saída gradual", "Apply fade out", isPt)
+                        ToolOperation.ECHO_WAV -> localized("Aplicar eco e exportar WAV", "Apply echo and export WAV", isPt)
+                        ToolOperation.REVERB_WAV -> localized("Aplicar reverb e exportar WAV", "Apply reverb and export WAV", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
@@ -341,7 +799,10 @@ fun ToolDetailScreen(
                 onOpenOutput = { output ->
                     try {
                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(Uri.parse(output), "audio/*")
+                            setDataAndType(
+                                Uri.parse(output),
+                                workInfo.outputData.getString(ProcessingContract.KEY_OUTPUT_MIME) ?: "audio/*"
+                            )
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                         context.startActivity(intent)
@@ -355,33 +816,139 @@ fun ToolDetailScreen(
 }
 
 @Composable
-private fun NotReadyPanel(isPt: Boolean) {
+private fun EffectSlider(
+    label: String,
+    value: Float,
+    valueText: String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onValueChange: (Float) -> Unit
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(valueText, color = Color(0xFFFF9BD4), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            steps = steps
+        )
+    }
+}
+
+@Composable
+private fun NotReadyPanel(tool: AudioTool, isPt: Boolean) {
+    val accent = when (tool.category) {
+        com.nexauren.audiolabtools.data.ToolCategory.EDIT -> Color(0xFF27A8FF)
+        com.nexauren.audiolabtools.data.ToolCategory.CONVERT -> Color(0xFF23D0B5)
+        com.nexauren.audiolabtools.data.ToolCategory.CLEAN -> Color(0xFFAE7BFF)
+        com.nexauren.audiolabtools.data.ToolCategory.EFFECTS -> Color(0xFFFF79C6)
+        com.nexauren.audiolabtools.data.ToolCategory.ANALYZE -> Color(0xFF49C9F2)
+        com.nexauren.audiolabtools.data.ToolCategory.METADATA -> Color(0xFFFFB15E)
+        com.nexauren.audiolabtools.data.ToolCategory.BATCH -> Color(0xFFFF70BA)
+    }
+    val fileFlow = when (tool.id) {
+        "extract-video-audio" -> Pair(localized("Vídeo local", "Local video", isPt), localized("Novo ficheiro de áudio", "New audio file", isPt))
+        "waveform-viewer", "spectrogram", "frequency-analyzer", "loudness-meter", "clipping-detector", "silence-detector" ->
+            Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Relatório / visualização", "Report / visualization", isPt))
+        "edit-metadata", "cover-art", "metadata-cleaner" ->
+            Pair(localized("Ficheiro com etiquetas", "Tagged audio file", isPt), localized("Cópia com metadados", "Copy with metadata", isPt))
+        "batch-convert", "batch-normalize", "batch-rename", "batch-export" ->
+            Pair(localized("Vários ficheiros", "Multiple files", isPt), localized("Coleção de resultados", "Output collection", isPt))
+        "remove-silence", "noise-reduction", "audio-compressor", "peak-limiter" ->
+            Pair(localized("Áudio de origem", "Source audio", isPt), localized("Áudio otimizado", "Optimized audio", isPt))
+        "convert-audio", "mp3-to-wav", "wav-to-mp3", "flac-converter", "sample-rate", "bit-depth", "stereo-mono" ->
+            Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Novo formato / resolução", "New format / resolution", isPt))
+        else -> Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Novo ficheiro processado", "New processed file", isPt))
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E192B)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.55f))
     ) {
-        Column(Modifier.padding(18.dp)) {
-            Text("◌", color = AudioLabPalette.Cyan, fontSize = 33.sp)
-            Spacer(Modifier.height(10.dp))
-            Text(
-                localized("Motor em desenvolvimento", "Processing engine in development", isPt),
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(
-                localized(
-                    "Esta ferramenta já faz parte da organização do Audio Lab, mas ainda não executa operações. Será ativada quando o motor e os testes estiverem prontos.",
-                    "This tool is already part of Audio Lab's structure, but it does not run operations yet. It will be enabled when its engine and tests are ready.",
-                    isPt
-                ),
-                color = AudioLabPalette.Muted,
-                fontSize = 13.sp
-            )
+        Column(Modifier.padding(17.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(49.dp).clip(RoundedCornerShape(15.dp)).background(accent.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(tool.symbol, color = accent, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(localized("ESPECIFICAÇÃO DA FERRAMENTA", "TOOL SPECIFICATION", isPt),
+                        color = accent, fontSize = 8.sp, letterSpacing = 1.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(tool.title(isPt), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(13.dp))
+            Text(tool.description(isPt), color = Color(0xFFC0CDE1), fontSize = 12.sp, lineHeight = 17.sp)
+            Spacer(Modifier.height(17.dp))
+            Text(localized("FLUXO PREVISTO", "PLANNED WORKFLOW", isPt),
+                color = AudioLabPalette.Muted, fontSize = 9.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlannedStep("01", localized("Selecionar", "Select", isPt), Modifier.weight(1f))
+                PlannedStep("02", localized("Configurar", "Configure", isPt), Modifier.weight(1f))
+                PlannedStep("03", localized("Processar", "Process", isPt), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(15.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                PlannedFileCard(localized("ENTRADA", "INPUT", isPt), fileFlow.first, Modifier.weight(1f), accent)
+                PlannedFileCard(localized("RESULTADO", "OUTPUT", isPt), fileFlow.second, Modifier.weight(1f), accent)
+            }
+            Spacer(Modifier.height(15.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                    .background(Color(0xFF2A2030)).padding(11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("◌", color = Color(0xFFFFC477), fontSize = 19.sp)
+                Spacer(Modifier.width(9.dp))
+                Column {
+                    Text(localized("Motor em desenvolvimento", "Engine in development", isPt),
+                        color = Color(0xFFFFD39B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        localized(
+                            "Esta página descreve a ferramenta. A execução só será ativada depois de o motor e os testes estarem prontos.",
+                            "This page describes the tool. Processing will only be enabled after its engine and tests are ready.",
+                            isPt
+                        ),
+                        color = AudioLabPalette.Muted,
+                        fontSize = 9.sp
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PlannedStep(number: String, label: String, modifier: Modifier) {
+    Column(modifier.clip(RoundedCornerShape(13.dp)).background(Color(0xFF17243A)).padding(10.dp)) {
+        Text(number, color = AudioLabPalette.Cyan, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun PlannedFileCard(title: String, value: String, modifier: Modifier, accent: Color) {
+    Column(modifier.clip(RoundedCornerShape(13.dp)).background(Color(0xFF111F33)).padding(11.dp)) {
+        Text(title, color = accent, fontSize = 8.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(5.dp))
+        Text(value, color = Color.White, fontSize = 10.sp, lineHeight = 13.sp)
     }
 }
 
@@ -532,6 +1099,9 @@ private fun TextButtonLike(text: String, onClick: () -> Unit) {
         Text(text, color = AudioLabPalette.Cyan, fontSize = 12.sp)
     }
 }
+
+private fun sourceKeyCount(sourceKey: String?): Int =
+    sourceKey?.split("\n")?.count { it.isNotBlank() } ?: 0
 
 private fun queryDisplayName(context: android.content.Context, uri: Uri): String {
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->

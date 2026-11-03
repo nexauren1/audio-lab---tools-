@@ -2,13 +2,12 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.nexauren.audiolabtools"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.nexauren.audiolabtools"
@@ -60,6 +59,7 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.runtime.livedata)
     implementation(libs.compose.ui)
+    implementation(libs.compose.animation)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)

@@ -102,6 +102,613 @@ object WavPcmProcessor {
         )
     }
 
+
+    /**
+     * Exports a time range from an integer-PCM WAV file without decoding the
+     * entire file into memory. Boundaries are aligned to complete PCM frames.
+     */
+    suspend fun trim(
+        source: File,
+        destination: File,
+        startMs: Long,
+        endMs: Long,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(startMs >= 0L && endMs > startMs) { "The end time must be greater than the start time." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val totalFrames = info.dataSize / info.blockAlign
+        val durationMs = totalFrames * 1000L / info.sampleRate
+        require(endMs <= durationMs) { "The selected end time is beyond the audio duration." }
+
+        val startFrame = (startMs * info.sampleRate / 1000L).coerceIn(0L, totalFrames)
+        val endFrame = (endMs * info.sampleRate / 1000L).coerceIn(0L, totalFrames)
+        require(endFrame > startFrame) { "The selected range is shorter than one audio frame." }
+
+        val selectedFrames = endFrame - startFrame
+        val selectedBytes = selectedFrames * info.blockAlign
+        require(selectedBytes <= 0xFFFF_FFFFL - 37L) {
+            "The selected range is too large for standard RIFF/WAV output."
+        }
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info.copy(dataSize = selectedBytes))
+                input.seek(info.dataOffset + startFrame * info.blockAlign)
+
+                val bytesPerBlock = max(info.blockAlign, (64 * 1024 / info.blockAlign) * info.blockAlign)
+                val buffer = ByteArray(bytesPerBlock)
+                var remaining = selectedBytes
+                var copied = 0L
+                var lastProgress = -1
+
+                onProgress(5)
+                while (remaining > 0L) {
+                    currentCoroutineContext().ensureActive()
+                    val count = minOf(buffer.size.toLong(), remaining).toInt()
+                    input.readFully(buffer, 0, count)
+                    output.write(buffer, 0, count)
+                    copied += count
+                    remaining -= count
+                    val progress = (5 + copied * 90L / selectedBytes).toInt().coerceAtMost(95)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (selectedBytes % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = selectedFrames,
+            appliedGain = 1.0
+        )
+    }
+
+
+    /**
+     * Splits integer-PCM WAV into equal, frame-aligned parts.
+     * Audio is copied in small buffers; no full-file PCM allocation is made.
+     */
+    suspend fun splitIntoParts(
+        source: File,
+        outputFolder: File,
+        baseName: String,
+        partCount: Int,
+        onProgress: suspend (Int) -> Unit
+    ): List<File> = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(partCount in 2..20) { "Choose between 2 and 20 parts." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames >= partCount.toLong()) { "The audio is too short to create that many parts." }
+
+        outputFolder.mkdirs()
+        val safeBase = baseName.replace(Regex("[^A-Za-z0-9_-]"), "_").take(48).ifBlank { "audio" }
+        val outputs = mutableListOf<File>()
+
+        try {
+            RandomAccessFile(source, "r").use { input ->
+                for (index in 0 until partCount) {
+                    currentCoroutineContext().ensureActive()
+                    val startFrame = totalFrames * index / partCount
+                    val endFrame = totalFrames * (index + 1) / partCount
+                    val partBytes = (endFrame - startFrame) * info.blockAlign
+                    require(partBytes <= 0xFFFF_FFFFL - 37L) {
+                        "A split part is too large for standard RIFF/WAV output."
+                    }
+
+                    val partFile = File(
+                        outputFolder,
+                        safeBase + "_part_" + (index + 1).toString().padStart(2, '0') + ".wav"
+                    )
+                    RandomAccessFile(partFile, "rw").use { output ->
+                        output.setLength(0L)
+                        writeHeader(output, info.copy(dataSize = partBytes))
+                        input.seek(info.dataOffset + startFrame * info.blockAlign)
+
+                        val bytesPerBlock = max(info.blockAlign, (64 * 1024 / info.blockAlign) * info.blockAlign)
+                        val buffer = ByteArray(bytesPerBlock)
+                        var remaining = partBytes
+                        var copied = 0L
+                        while (remaining > 0L) {
+                            currentCoroutineContext().ensureActive()
+                            val count = minOf(buffer.size.toLong(), remaining).toInt()
+                            input.readFully(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                            copied += count
+                            remaining -= count
+                            val partProgress = (copied * 100L / partBytes).toInt()
+                            val overall = ((index * 100L + partProgress) / partCount).toInt()
+                            onProgress(overall.coerceIn(0, 99))
+                        }
+                        if (partBytes % 2L == 1L) output.write(0)
+                        output.fd.sync()
+                    }
+                    outputs += partFile
+                }
+            }
+            onProgress(100)
+            outputs
+        } catch (error: Exception) {
+            outputs.forEach(File::delete)
+            throw error
+        }
+    }
+
+
+    /**
+     * Concatenates PCM frame data from compatible integer-PCM WAV files.
+     * The source format must match exactly and data is copied in bounded buffers.
+     */
+    suspend fun join(
+        sources: List<File>,
+        destination: File,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(sources.size in 2..20) { "Choose between 2 and 20 WAV files." }
+        require(sources.all { it.isFile && it.length() > 44L }) {
+            "Every selected source must be a valid WAV file."
+        }
+
+        val infos = sources.map(::readInfo)
+        val reference = infos.first()
+        require(infos.all {
+            it.sampleRate == reference.sampleRate &&
+                it.channels == reference.channels &&
+                it.bitsPerSample == reference.bitsPerSample &&
+                it.blockAlign == reference.blockAlign
+        }) {
+            "All WAV files must use the same sample rate, channel count and bit depth."
+        }
+
+        var totalBytes = 0L
+        for (info in infos) {
+            require(info.dataSize % info.blockAlign == 0L) { "A WAV data chunk is incomplete." }
+            require(totalBytes <= 0xFFFF_FFFFL - 37L - info.dataSize) {
+                "The combined audio is too large for standard RIFF/WAV output."
+            }
+            totalBytes += info.dataSize
+        }
+        require(totalBytes > 0L) { "The selected WAV files contain no audio samples." }
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(destination, "rw").use { output ->
+            output.setLength(0L)
+            writeHeader(output, reference.copy(dataSize = totalBytes))
+            val bufferSize = max(reference.blockAlign, (64 * 1024 / reference.blockAlign) * reference.blockAlign)
+            val buffer = ByteArray(bufferSize)
+            var copiedTotal = 0L
+            var lastProgress = -1
+
+            sources.forEachIndexed { index, file ->
+                currentCoroutineContext().ensureActive()
+                RandomAccessFile(file, "r").use { input ->
+                    input.seek(infos[index].dataOffset)
+                    var remaining = infos[index].dataSize
+                    while (remaining > 0L) {
+                        currentCoroutineContext().ensureActive()
+                        val count = minOf(buffer.size.toLong(), remaining).toInt()
+                        input.readFully(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                        copiedTotal += count
+                        remaining -= count
+
+                        val progress = (copiedTotal * 100L / totalBytes).toInt().coerceAtMost(99)
+                        if (progress != lastProgress) {
+                            onProgress(progress)
+                            lastProgress = progress
+                        }
+                    }
+                }
+            }
+            if (totalBytes % 2L == 1L) output.write(0)
+            output.fd.sync()
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = reference.sampleRate,
+            channels = reference.channels,
+            bitsPerSample = reference.bitsPerSample,
+            frames = totalBytes / reference.blockAlign,
+            appliedGain = 1.0
+        )
+    }
+
+    /**
+     * Reverses time-frame order while preserving the samples inside each
+     * multi-channel frame. Reads backward in bounded, frame-aligned blocks.
+     */
+    suspend fun reverse(
+        source: File,
+        destination: File,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        require(info.dataSize <= 0xFFFF_FFFFL - 37L) {
+            "This WAV file is too large for standard RIFF output."
+        }
+
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames > 0L) { "The selected WAV file contains no audio frames." }
+        destination.parentFile?.mkdirs()
+
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info)
+                val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+                val buffer = ByteArray(framesPerBlock * info.blockAlign)
+                var remainingFrames = totalFrames
+                var reversedFrames = 0L
+                var lastProgress = -1
+
+                onProgress(0)
+                while (remainingFrames > 0L) {
+                    currentCoroutineContext().ensureActive()
+                    val countFrames = minOf(framesPerBlock.toLong(), remainingFrames).toInt()
+                    val firstFrame = remainingFrames - countFrames
+                    val byteCount = countFrames * info.blockAlign
+                    input.seek(info.dataOffset + firstFrame * info.blockAlign)
+                    input.readFully(buffer, 0, byteCount)
+
+                    for (frameIndex in countFrames - 1 downTo 0) {
+                        output.write(buffer, frameIndex * info.blockAlign, info.blockAlign)
+                    }
+
+                    remainingFrames -= countFrames
+                    reversedFrames += countFrames
+                    val progress = (reversedFrames * 100L / totalFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (info.dataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = totalFrames,
+            appliedGain = 1.0
+        )
+    }
+
+    /**
+     * Applies a linear fade to the beginning or end of a PCM WAV file.
+     * Gain is applied per complete audio frame, preserving channel alignment.
+     */
+    suspend fun fade(
+        source: File,
+        destination: File,
+        fadeIn: Boolean,
+        fadeDurationMs: Long,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(fadeDurationMs in 1L..60_000L) { "Fade duration must be between 1 ms and 60 seconds." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        require(info.dataSize <= 0xFFFF_FFFFL - 37L) {
+            "This WAV file is too large for standard RIFF output."
+        }
+
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames > 0L) { "The selected WAV file contains no audio frames." }
+        val fadeFrames = (fadeDurationMs * info.sampleRate / 1000L)
+            .coerceIn(1L, totalFrames)
+        val bytesPerSample = info.bitsPerSample / 8
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info)
+                input.seek(info.dataOffset)
+
+                val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+                val buffer = ByteArray(framesPerBlock * info.blockAlign)
+                var processedFrames = 0L
+                var lastProgress = -1
+
+                while (processedFrames < totalFrames) {
+                    currentCoroutineContext().ensureActive()
+                    val countFrames = minOf(framesPerBlock.toLong(), totalFrames - processedFrames).toInt()
+                    val byteCount = countFrames * info.blockAlign
+                    input.readFully(buffer, 0, byteCount)
+
+                    for (frameInBlock in 0 until countFrames) {
+                        val frameIndex = processedFrames + frameInBlock
+                        val framesFromEnd = totalFrames - frameIndex
+                        val gain = if (fadeIn) {
+                            if (frameIndex >= fadeFrames) 1.0
+                            else if (fadeFrames <= 1L) 1.0
+                            else frameIndex.toDouble() / (fadeFrames - 1L).toDouble()
+                        } else {
+                            if (framesFromEnd > fadeFrames) 1.0
+                            else if (fadeFrames <= 1L) 0.0
+                            else (framesFromEnd - 1L).coerceAtLeast(0L).toDouble() /
+                                (fadeFrames - 1L).toDouble()
+                        }
+
+                        for (channel in 0 until info.channels) {
+                            val sampleOffset = frameInBlock * info.blockAlign + channel * bytesPerSample
+                            applyGain(buffer, sampleOffset, info.bitsPerSample, gain)
+                        }
+                    }
+
+                    output.write(buffer, 0, byteCount)
+                    processedFrames += countFrames
+                    val progress = (processedFrames * 100L / totalFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+
+                if (info.dataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = totalFrames,
+            appliedGain = 1.0
+        )
+    }
+
+    /**
+     * Adds a tempo-independent echo to integer PCM WAV.
+     * Delay lines are allocated per channel, so stereo channels never bleed into each other.
+     * Processing is streamed in bounded blocks; only the short delay memory is held in RAM.
+     */
+    suspend fun echo(
+        source: File,
+        destination: File,
+        delayMs: Long,
+        feedback: Double,
+        mix: Double,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(delayMs in 40L..1000L) { "Echo delay must be between 40 and 1000 ms." }
+        require(feedback.isFinite() && feedback in 0.0..0.7) { "Echo feedback must be between 0 and 0.7." }
+        require(mix.isFinite() && mix in 0.0..1.0) { "Echo mix must be between 0 and 1." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val inputFrames = info.dataSize / info.blockAlign
+        require(inputFrames > 0L) { "The selected WAV file contains no audio frames." }
+
+        val delayFrames = max(1L, info.sampleRate.toLong() * delayMs / 1000L)
+        val tailFrames = delayFrames * 8L
+        val outputFrames = inputFrames + tailFrames
+        val outputDataSize = outputFrames * info.blockAlign
+        require(outputDataSize <= 0xFFFF_FFFFL - 37L) {
+            "The processed audio is too large for standard RIFF/WAV output."
+        }
+        require(delayFrames <= Int.MAX_VALUE.toLong()) { "The selected echo delay is too large." }
+
+        val bytesPerSample = info.bitsPerSample / 8
+        val delayLines = Array(info.channels) { FloatArray(delayFrames.toInt()) }
+        var delayPosition = 0
+        val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+        val inputBuffer = ByteArray(framesPerBlock * info.blockAlign)
+        val outputBuffer = ByteArray(framesPerBlock * info.blockAlign)
+        destination.parentFile?.mkdirs()
+
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info.copy(dataSize = outputDataSize))
+                input.seek(info.dataOffset)
+
+                var outputFrameCursor = 0L
+                var lastProgress = -1
+                onProgress(0)
+
+                while (outputFrameCursor < outputFrames) {
+                    currentCoroutineContext().ensureActive()
+                    val blockFrames = minOf(framesPerBlock.toLong(), outputFrames - outputFrameCursor).toInt()
+                    val sourceFramesInBlock = minOf(blockFrames.toLong(), inputFrames - outputFrameCursor)
+                        .coerceAtLeast(0L).toInt()
+                    if (sourceFramesInBlock > 0) {
+                        input.readFully(inputBuffer, 0, sourceFramesInBlock * info.blockAlign)
+                    }
+
+                    for (frame in 0 until blockFrames) {
+                        val hasSource = outputFrameCursor + frame < inputFrames
+                        for (channel in 0 until info.channels) {
+                            val offset = frame * info.blockAlign + channel * bytesPerSample
+                            val dry = if (hasSource) {
+                                readSample(inputBuffer, offset, info.bitsPerSample)
+                            } else {
+                                0.0
+                            }
+                            val delayed = delayLines[channel][delayPosition].toDouble()
+                            val outputSample = dry + delayed * mix
+                            writeSample(outputBuffer, offset, info.bitsPerSample, outputSample)
+                            delayLines[channel][delayPosition] =
+                                (dry + delayed * feedback).coerceIn(-1.0, 1.0).toFloat()
+                        }
+                        delayPosition++
+                        if (delayPosition == delayFrames.toInt()) delayPosition = 0
+                    }
+
+                    output.write(outputBuffer, 0, blockFrames * info.blockAlign)
+                    outputFrameCursor += blockFrames
+                    val progress = (outputFrameCursor * 100L / outputFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (outputDataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = outputFrames,
+            appliedGain = 1.0
+        )
+    }
+
+
+    /**
+     * Adds a compact three-delay feedback reverb.
+     * Each delay path is channel-isolated and uses a different feedback coefficient
+     * to create a diffuse tail without allocating a full decoded audio file.
+     */
+    suspend fun reverb(
+        source: File,
+        destination: File,
+        decay: Double,
+        mix: Double,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(decay.isFinite() && decay in 0.1..0.9) { "Reverb decay must be between 0.1 and 0.9." }
+        require(mix.isFinite() && mix in 0.0..1.0) { "Reverb mix must be between 0 and 1." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val inputFrames = info.dataSize / info.blockAlign
+        require(inputFrames > 0L) { "The selected WAV file contains no audio frames." }
+
+        val delayLengths = longArrayOf(29L, 41L, 53L).map { ms ->
+            max(1, (info.sampleRate.toLong() * ms / 1000L).toInt())
+        }
+        val delayLines = Array(3) { line ->
+            Array(info.channels) { FloatArray(delayLengths[line]) }
+        }
+        val delayPositions = IntArray(3)
+        val feedback = doubleArrayOf(decay * 0.68, decay * 0.57, decay * 0.49)
+        val tailMs = (600.0 + decay * 1400.0).toLong()
+        val tailFrames = info.sampleRate.toLong() * tailMs / 1000L
+        val outputFrames = inputFrames + tailFrames
+        val outputDataSize = outputFrames * info.blockAlign
+        require(outputDataSize <= 0xFFFF_FFFFL - 37L) {
+            "The processed audio is too large for standard RIFF/WAV output."
+        }
+
+        val bytesPerSample = info.bitsPerSample / 8
+        val fadeTailFrames = minOf(tailFrames, info.sampleRate.toLong() / 5L)
+        val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+        val inputBuffer = ByteArray(framesPerBlock * info.blockAlign)
+        val outputBuffer = ByteArray(framesPerBlock * info.blockAlign)
+        destination.parentFile?.mkdirs()
+
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info.copy(dataSize = outputDataSize))
+                input.seek(info.dataOffset)
+
+                var outputFrameCursor = 0L
+                var lastProgress = -1
+                onProgress(0)
+
+                while (outputFrameCursor < outputFrames) {
+                    currentCoroutineContext().ensureActive()
+                    val blockFrames = minOf(framesPerBlock.toLong(), outputFrames - outputFrameCursor).toInt()
+                    val sourceFramesInBlock = minOf(blockFrames.toLong(), inputFrames - outputFrameCursor)
+                        .coerceAtLeast(0L).toInt()
+                    if (sourceFramesInBlock > 0) {
+                        input.readFully(inputBuffer, 0, sourceFramesInBlock * info.blockAlign)
+                    }
+
+                    for (frame in 0 until blockFrames) {
+                        val absoluteFrame = outputFrameCursor + frame
+                        val hasSource = absoluteFrame < inputFrames
+                        val remainingTail = outputFrames - absoluteFrame
+                        val tailEnvelope = if (hasSource || fadeTailFrames <= 0L || remainingTail > fadeTailFrames) {
+                            1.0
+                        } else {
+                            (remainingTail.toDouble() / fadeTailFrames.toDouble()).coerceIn(0.0, 1.0)
+                        }
+
+                        for (channel in 0 until info.channels) {
+                            val offset = frame * info.blockAlign + channel * bytesPerSample
+                            val dry = if (hasSource) {
+                                readSample(inputBuffer, offset, info.bitsPerSample)
+                            } else {
+                                0.0
+                            }
+                            val delayedA = delayLines[0][channel][delayPositions[0]].toDouble()
+                            val delayedB = delayLines[1][channel][delayPositions[1]].toDouble()
+                            val delayedC = delayLines[2][channel][delayPositions[2]].toDouble()
+                            val wet = (delayedA + delayedB + delayedC) / 3.0
+                            val outputSample = (dry * (1.0 - mix) + wet * mix) * tailEnvelope
+                            writeSample(outputBuffer, offset, info.bitsPerSample, outputSample)
+
+                            delayLines[0][channel][delayPositions[0]] =
+                                (dry + delayedA * feedback[0]).coerceIn(-1.0, 1.0).toFloat()
+                            delayLines[1][channel][delayPositions[1]] =
+                                (dry + delayedB * feedback[1]).coerceIn(-1.0, 1.0).toFloat()
+                            delayLines[2][channel][delayPositions[2]] =
+                                (dry + delayedC * feedback[2]).coerceIn(-1.0, 1.0).toFloat()
+                        }
+
+                        for (line in delayPositions.indices) {
+                            delayPositions[line]++
+                            if (delayPositions[line] == delayLengths[line]) delayPositions[line] = 0
+                        }
+                    }
+
+                    output.write(outputBuffer, 0, blockFrames * info.blockAlign)
+                    outputFrameCursor += blockFrames
+                    val progress = (outputFrameCursor * 100L / outputFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (outputDataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = outputFrames,
+            appliedGain = 1.0
+        )
+    }
+
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
@@ -229,6 +836,35 @@ object WavPcmProcessor {
             raw / 2147483648.0
         }
         else -> error("Unsupported PCM depth.")
+    }
+
+    private fun writeSample(bytes: ByteArray, offset: Int, bits: Int, sample: Double) {
+        val value = sample.coerceIn(-1.0, 1.0)
+        when (bits) {
+            8 -> {
+                val encoded = (128.0 + value * 128.0).roundToLong().coerceIn(0L, 255L).toInt()
+                bytes[offset] = encoded.toByte()
+            }
+            16 -> {
+                val encoded = (value * 32768.0).roundToLong().coerceIn(-32768L, 32767L).toInt()
+                bytes[offset] = encoded.toByte()
+                bytes[offset + 1] = (encoded shr 8).toByte()
+            }
+            24 -> {
+                val encoded = (value * 8388608.0).roundToLong().coerceIn(-8388608L, 8388607L).toInt()
+                bytes[offset] = encoded.toByte()
+                bytes[offset + 1] = (encoded shr 8).toByte()
+                bytes[offset + 2] = (encoded shr 16).toByte()
+            }
+            32 -> {
+                val encoded = (value * 2147483648.0).roundToLong()
+                    .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+                bytes[offset] = encoded.toByte()
+                bytes[offset + 1] = (encoded shr 8).toByte()
+                bytes[offset + 2] = (encoded shr 16).toByte()
+                bytes[offset + 3] = (encoded shr 24).toByte()
+            }
+        }
     }
 
     private fun applyGain(bytes: ByteArray, offset: Int, bits: Int, gain: Double) {
