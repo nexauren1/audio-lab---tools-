@@ -27,8 +27,9 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 
 ## 4. Returning to the app
 
-- Observe the existing WorkManager job by its unique work name or processing tag.
+- Observe the existing WorkManager job by its processing tag and match it to the selected source URI.
 - Display its real state: queued, running, succeeded, failed or cancelled.
+- Keep independent files independent: a job for one source must not block or masquerade as the status of another source.
 - Never restart a job automatically on Activity recreation, app resume or return navigation.
 - Offer an explicit retry action only after a failed or completed job.
 
