@@ -150,7 +150,7 @@ fun HomeScreen(
                 )
             }
             Text(
-                localized("37 no catálogo", "37 in catalogue", isPt),
+                totalCount.toString() + localized(" no catálogo", " in catalogue", isPt),
                 color = AudioLabPalette.Cyan,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
