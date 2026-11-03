@@ -188,6 +188,7 @@ class WavProcessingWorker(
                     ProcessingContract.KEY_STAGE to when {
                         progress < 10 -> "Preparing audio"
                         progress < 96 && toolId == "trim-audio" -> "Extracting selected audio range"
+                        toolId == "join-audio" -> "Joining WAV files"
                         progress < 25 -> "Analysing audio peak"
                         else -> "Processing PCM samples"
                     }
@@ -214,7 +215,7 @@ class WavProcessingWorker(
                         partCount = splitParts
                     ) { progress ->
                         setProgress(workDataOf(
-                            ProcessingContract.KEY_PROGRESS to (10 + progress * 0.75).coerceAtMost(85),
+                            ProcessingContract.KEY_PROGRESS to (10 + progress * 75 / 100).coerceAtMost(85),
                             ProcessingContract.KEY_STAGE to "Splitting WAV into part " +
                                 ((progress * splitParts / 100) + 1).coerceAtMost(splitParts) +
                                 " of " + splitParts
