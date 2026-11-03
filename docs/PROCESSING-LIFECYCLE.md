@@ -16,9 +16,12 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 - For split jobs, validate the requested part count (2–20), WAV PCM format and frame availability before writing any published result.
 - For multi-file join jobs, validate all sources use the same sample rate, channel count and bit depth.
 - For reverse jobs, reverse whole PCM frames so left/right channel samples remain aligned.
+- For echo and reverb jobs, keep delay memory isolated per channel and validate all effect parameters before the worker starts.
+- Animate progress from WorkManager progress values; an activity spinner may rotate while the worker is actually running, but must never invent percentage progress.
 - Submit a uniquely named WorkManager job with a tool tag.
 - Disable repeated taps while submission is being confirmed.
 - Show stages and progress from the worker rather than inventing progress in the UI.
+- Navigation and panel transitions may animate, but must not add artificial delays to file processing or page changes.
 
 ## 3. Leaving a tool
 
