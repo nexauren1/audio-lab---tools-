@@ -22,6 +22,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 - WAV PCM splitting into 2–20 frame-aligned parts, exported as a ZIP archive.
 - Joining 2–20 WAV PCM files with matching sample rate, channels and bit depth.
 - Reversing WAV PCM in frame order, preserving multi-channel frames.
+- Configurable linear fade-in and fade-out, preserving multi-channel frames.
 - WAV PCM normalization.
 - WAV PCM gain adjustment.
 - Persistent background work queue with real progress, cancellation and result links.
@@ -30,7 +31,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 
 Other tools are visible in the catalogue but clearly marked as planned until their processing engines are implemented.
 
-The current trim, split, join, reverse, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
+The current trim, split, join, reverse, fade-in, fade-out, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. Fade durations are configurable from 1 ms to 60 seconds. They do not silently convert unsupported encodings.
 
 ## Processing rules
 
