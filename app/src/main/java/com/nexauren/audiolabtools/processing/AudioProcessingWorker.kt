@@ -157,8 +157,9 @@ class WavProcessingWorker(
             ))
 
             val reportProgress: suspend (Int) -> Unit = { progress ->
+                val visibleProgress = (10 + progress * 0.85).toInt().coerceIn(10, 95)
                 setProgress(workDataOf(
-                    ProcessingContract.KEY_PROGRESS to progress,
+                    ProcessingContract.KEY_PROGRESS to visibleProgress,
                     ProcessingContract.KEY_STAGE to when {
                         progress < 10 -> "Preparing audio"
                         progress < 96 && toolId == "trim-audio" -> "Extracting selected audio range"
