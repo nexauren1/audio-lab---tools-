@@ -67,6 +67,41 @@ object AudioWorkScheduler {
         return uniqueName
     }
 
+
+    fun enqueueWavTrim(
+        context: Context,
+        uri: Uri,
+        sourceName: String,
+        startMs: Long,
+        endMs: Long
+    ): String {
+        require(startMs >= 0L && endMs > startMs) { "Invalid audio trim range." }
+        val toolId = "trim-audio"
+        val uniqueName = uniqueName(toolId, uri)
+        val request = OneTimeWorkRequestBuilder<WavProcessingWorker>()
+            .setInputData(
+                workDataOf(
+                    ProcessingContract.KEY_INPUT_URI to uri.toString(),
+                    ProcessingContract.KEY_SOURCE_NAME to sourceName,
+                    ProcessingContract.KEY_TOOL_ID to toolId,
+                    ProcessingContract.KEY_NORMALIZE to false,
+                    ProcessingContract.KEY_GAIN_DB to 0.0,
+                    ProcessingContract.KEY_START_MS to startMs,
+                    ProcessingContract.KEY_END_MS to endMs
+                )
+            )
+            .addTag(ProcessingContract.TAG_PROCESSING)
+            .addTag(ProcessingContract.toolTag(toolId))
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            uniqueName,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        return uniqueName
+    }
+
     private fun uniqueName(toolId: String, uri: Uri): String {
         val bytes = MessageDigest.getInstance("SHA-256")
             .digest(uri.toString().toByteArray(Charsets.UTF_8))
