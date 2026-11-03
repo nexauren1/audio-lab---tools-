@@ -104,6 +104,40 @@ class WavPcmProcessorTest {
         }
     }
 
+
+    @Test
+    fun splitWavCreatesFrameAlignedEqualParts() = runBlocking {
+        val folder = createTempDir(prefix = "audio-lab-test-")
+        try {
+            val input = File(folder, "input.wav")
+            val outputFolder = File(folder, "parts")
+            writePcm16Wav(input, ShortArray(80) { it.toShort() }, sampleRate = 8000)
+
+            val outputs = WavPcmProcessor.splitIntoParts(
+                source = input,
+                outputFolder = outputFolder,
+                baseName = "test",
+                partCount = 4,
+                onProgress = {}
+            )
+
+            assertEquals(4, outputs.size)
+            outputs.forEachIndexed { index, part ->
+                RandomAccessFile(part, "r").use { wav ->
+                    val riff = ByteArray(4)
+                    wav.readFully(riff)
+                    assertEquals("RIFF", String(riff, Charsets.US_ASCII))
+                    wav.seek(44)
+                    val first = wav.readShortLE().toInt()
+                    assertEquals(index * 20, first)
+                    assertEquals(84L, part.length())
+                }
+            }
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
     private fun writePcm16Wav(file: File, samples: ShortArray, sampleRate: Int = 48000) {
         RandomAccessFile(file, "rw").use { wav ->
             val dataSize = samples.size * 2
