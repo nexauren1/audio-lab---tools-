@@ -4,6 +4,7 @@ object ProcessingContract {
     const val TAG_PROCESSING = "audio_lab_processing"
 
     const val KEY_INPUT_URI = "input_uri"
+    const val KEY_INPUT_URIS = "input_uris"
     const val KEY_TOOL_ID = "tool_id"
     const val KEY_SOURCE_NAME = "source_name"
     const val KEY_GAIN_DB = "gain_db"
