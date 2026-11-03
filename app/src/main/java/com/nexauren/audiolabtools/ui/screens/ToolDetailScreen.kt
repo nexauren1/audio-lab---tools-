@@ -509,6 +509,11 @@ fun ToolDetailScreen(
                     "Join 2–20 integer PCM WAV files. Every file must have the same sample rate, channel count and bit depth.",
                     isPt
                 )
+                ToolOperation.REVERSE_WAV -> localized(
+                    "Inverte a ordem dos frames do WAV PCM, mantendo os canais e os samples de cada frame juntos. Aceita PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Reverses WAV PCM frame order while keeping channels and samples in each frame together. Supports 8, 16, 24 or 32-bit integer PCM.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -550,6 +555,10 @@ fun ToolDetailScreen(
                             sourceKey.split("\n").map { Uri.parse(it) },
                             sourceName
                         )
+                        ToolOperation.REVERSE_WAV -> AudioWorkScheduler.enqueueWavOperation(
+                            context, uri ?: return@Button, sourceName,
+                            tool.id, normalize = false, gainDb = 0.0
+                        )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
@@ -577,6 +586,7 @@ fun ToolDetailScreen(
                         ToolOperation.TRIM_WAV -> localized("Cortar e exportar trecho", "Trim and export section", isPt)
                         ToolOperation.SPLIT_WAV -> localized("Dividir e exportar ZIP", "Split and export ZIP", isPt)
                         ToolOperation.JOIN_WAV -> localized("Unir e exportar WAV", "Join and export WAV", isPt)
+                        ToolOperation.REVERSE_WAV -> localized("Inverter e exportar WAV", "Reverse and export WAV", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
