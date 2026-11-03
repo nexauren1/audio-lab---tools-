@@ -143,9 +143,45 @@ object AudioWorkScheduler {
         return uniqueName
     }
 
-    private fun uniqueName(toolId: String, uri: Uri): String {
+
+    fun enqueueWavJoin(
+        context: Context,
+        uris: List<Uri>,
+        sourceName: String
+    ): String {
+        require(uris.size in 2..20) { "Choose between 2 and 20 WAV files." }
+        val toolId = "join-audio"
+        val sourceKey = uris.joinToString("\n") { it.toString() }
+        val uniqueName = uniqueName(toolId, sourceKey)
+        val request = OneTimeWorkRequestBuilder<WavProcessingWorker>()
+            .setInputData(
+                workDataOf(
+                    ProcessingContract.KEY_INPUT_URIS to uris.map { it.toString() }.toTypedArray(),
+                    ProcessingContract.KEY_SOURCE_NAME to sourceName,
+                    ProcessingContract.KEY_TOOL_ID to toolId,
+                    ProcessingContract.KEY_NORMALIZE to false,
+                    ProcessingContract.KEY_GAIN_DB to 0.0
+                )
+            )
+            .addTag(ProcessingContract.TAG_PROCESSING)
+            .addTag(ProcessingContract.toolTag(toolId))
+            .addTag(ProcessingContract.sourceTag(sourceKey))
+            .addTag(ProcessingContract.sourceNameTag(sourceName))
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            uniqueName,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        return uniqueName
+    }
+
+    private fun uniqueName(toolId: String, uri: Uri): String = uniqueName(toolId, uri.toString())
+
+    private fun uniqueName(toolId: String, sourceKey: String): String {
         val bytes = MessageDigest.getInstance("SHA-256")
-            .digest(uri.toString().toByteArray(Charsets.UTF_8))
+            .digest(sourceKey.toByteArray(Charsets.UTF_8))
         val key = bytes.take(10).joinToString("") { "%02x".format(it) }
         return "audio_lab_" + toolId + "_" + key
     }
