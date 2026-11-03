@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -53,7 +54,9 @@ import com.nexauren.audiolabtools.ui.theme.AudioLabPalette
 fun HomeScreen(
     onOpenTool: (AudioTool) -> Unit,
     onOpenProcessing: () -> Unit,
-    onOpenLibrary: () -> Unit
+    onOpenLibrary: () -> Unit,
+    favoriteToolIds: Set<String>,
+    onToggleFavorite: (String) -> Unit
 ) {
     val isPt = isPortuguese()
     var search by rememberSaveable { mutableStateOf("") }
@@ -172,6 +175,8 @@ fun HomeScreen(
                             tool = tool,
                             isPt = isPt,
                             modifier = Modifier.weight(1f),
+                            isFavorite = tool.id in favoriteToolIds,
+                            onToggleFavorite = { onToggleFavorite(tool.id) },
                             onClick = { onOpenTool(tool) }
                         )
                     }
@@ -449,6 +454,8 @@ private fun ToolboxToolCard(
     tool: AudioTool,
     isPt: Boolean,
     modifier: Modifier,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onClick: () -> Unit
 ) {
     val tint = categoryTint(tool.category)
@@ -476,6 +483,16 @@ private fun ToolboxToolCard(
                     Text(tool.symbol, color = tint, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Text(
+                        if (isFavorite) "★" else "☆",
+                        color = if (isFavorite) Color(0xFFFFC46B) else AudioLabPalette.Muted,
+                        fontSize = 18.sp
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
