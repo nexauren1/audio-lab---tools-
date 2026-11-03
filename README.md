@@ -58,4 +58,4 @@ The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapp
 
 ## Current stage
 
-The premium toolbox dashboard and 37-tool catalogue are in place. Seven operations currently have processing engines; the remaining catalogue entries are clearly marked as in development. Next milestones are more tested editing and conversion engines, deeper file-library workflows, accessibility polish and release validation on real Android devices.
+The premium toolbox dashboard and 37-tool catalogue are in place. Nine operations currently have processing engines; the remaining catalogue entries are clearly marked as in development. The dashboard also supports saved favourites. Next milestones are more tested editing and conversion engines, deeper file-library workflows, accessibility polish and release validation on real Android devices.
