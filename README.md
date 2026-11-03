@@ -29,7 +29,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 
 Other tools are visible in the catalogue but clearly marked as planned until their processing engines are implemented.
 
-The current trim, split, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
+The current trim, split, join, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
 
 ## Processing rules
 
@@ -51,7 +51,7 @@ The current trim, split, normalize and gain processors accept uncompressed integ
 
 ## Build
 
-Open the repository in a recent Android Studio version with JDK 17 and Android SDK 36 installed. Let Gradle sync, then run the `app` configuration.
+Open the repository in a recent Android Studio version with JDK 17 and Android SDK 37 installed. Let Gradle sync, then run the `app` configuration.
 
 The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 9.3.1`.
 
