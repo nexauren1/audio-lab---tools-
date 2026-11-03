@@ -7,6 +7,8 @@ object ProcessingContract {
     const val KEY_TOOL_ID = "tool_id"
     const val KEY_SOURCE_NAME = "source_name"
     const val KEY_GAIN_DB = "gain_db"
+    const val KEY_START_MS = "start_ms"
+    const val KEY_END_MS = "end_ms"
     const val KEY_NORMALIZE = "normalize"
     const val KEY_PROGRESS = "progress"
     const val KEY_STAGE = "stage"
