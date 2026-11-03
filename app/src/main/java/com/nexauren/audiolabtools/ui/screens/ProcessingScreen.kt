@@ -157,7 +157,9 @@ private fun ProcessingJobCard(
         ?.removePrefix("audio_lab_tool_")
     val tool = toolId?.let(AudioToolCatalog::find)
     val title = tool?.title(isPt) ?: localized("Processamento de áudio", "Audio processing", isPt)
-    val sourceName = info.inputData.getString(ProcessingContract.KEY_SOURCE_NAME).orEmpty()
+    val sourceName = info.tags.firstOrNull {
+        it.startsWith("audio_lab_source_name_")
+    }?.removePrefix("audio_lab_source_name_").orEmpty()
     val progress = if (info.state == WorkInfo.State.SUCCEEDED) 100
         else info.progress.getInt(ProcessingContract.KEY_PROGRESS, 0)
     val stage = info.progress.getString(ProcessingContract.KEY_STAGE)
