@@ -1,6 +1,6 @@
 # Audio Lab – Tools
 
-A native Android audio toolbox focused on practical file operations — not singing, vocal recording, or voice effects.
+A native Android audio toolbox for editing, converting, cleaning, inspecting and organizing audio files — not singing, vocal recording, or voice effects. The catalogue contains 37 tools across six specialist categories.
 
 ## Product direction
 
@@ -8,12 +8,12 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 
 ### Tool groups
 
-- **Edit:** trim, split, join and batch operations.
-- **Convert:** audio format and sample-rate conversion.
-- **Clean:** normalization, gain adjustment and silence removal.
-- **Analyze:** technical audio inspection and audio properties.
-- **Metadata:** inspect and manage file tags.
-- **Batch:** apply supported operations to several files.
+- **Edit:** trim, split, join, reverse, fades, speed and channel operations.
+- **Convert:** format, sample-rate, bit-depth and channel conversion, plus local video audio extraction.
+- **Clean:** normalization, gain, silence removal, noise reduction, compression and limiting.
+- **Analyze:** file properties, waveform, spectrogram, frequency, loudness, clipping and silence analysis.
+- **Metadata:** tags, cover artwork, batch rename and metadata cleanup.
+- **Batch:** convert, normalize, rename and export collections.
 
 ### Available in this first foundation
 
@@ -21,6 +21,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 - WAV PCM trimming by start/end time (8/16/24/32-bit integer PCM).
 - WAV PCM splitting into 2–20 frame-aligned parts, exported as a ZIP archive.
 - Joining 2–20 WAV PCM files with matching sample rate, channels and bit depth.
+- Reversing WAV PCM in frame order, preserving multi-channel frames.
 - WAV PCM normalization.
 - WAV PCM gain adjustment.
 - Persistent background work queue with real progress, cancellation and result links.
@@ -29,7 +30,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 
 Other tools are visible in the catalogue but clearly marked as planned until their processing engines are implemented.
 
-The current trim, split, join, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
+The current trim, split, join, reverse, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
 
 ## Processing rules
 
@@ -57,4 +58,4 @@ The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapp
 
 ## Current stage
 
-This is the first application foundation, not a release build. The next milestones are additional editing and conversion engines, automated tests for audio edge cases, accessibility polish, and release validation on real Android devices.
+The premium toolbox dashboard and 37-tool catalogue are in place. Seven operations currently have processing engines; the remaining catalogue entries are clearly marked as in development. Next milestones are more tested editing and conversion engines, deeper file-library workflows, accessibility polish and release validation on real Android devices.
