@@ -117,6 +117,10 @@ fun AudioLabApp() {
                             tool = tool,
                             initialUri = selectedFileUri,
                             initialName = selectedFileName,
+                            onSourceSelected = { uri, name ->
+                                selectedFileUri = uri
+                                selectedFileName = name
+                            },
                             onBack = ::backFromTool
                         )
                     }
