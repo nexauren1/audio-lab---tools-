@@ -100,6 +100,28 @@ fun ToolDetailScreen(
         }
     }
 
+
+    val multiPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.size in 2..20) {
+            uris.forEach { uri ->
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) {
+                    // Some providers do not offer persistable grants; current selections remain usable.
+                }
+            }
+            val sourceKey = uris.joinToString("\n") { it.toString() }
+            selectedUri = sourceKey
+            sourceName = "joined_" + uris.size + "_files.wav"
+            onSourceSelected(sourceKey, sourceName)
+        }
+    }
+
     val workInfosLiveData = workManager.getWorkInfosByTagLiveData(
         ProcessingContract.toolTag(tool.id)
     )
@@ -205,7 +227,13 @@ fun ToolDetailScreen(
                     )
                     Spacer(Modifier.height(14.dp))
                     Button(
-                        onClick = { picker.launch(arrayOf("audio/*")) },
+                        onClick = {
+                            if (tool.operation == ToolOperation.JOIN_WAV) {
+                                multiPicker.launch(arrayOf("audio/*"))
+                            } else {
+                                picker.launch(arrayOf("audio/*"))
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF172A47),
@@ -229,14 +257,22 @@ fun ToolDetailScreen(
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    sourceName.ifBlank { "Audio file" },
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        localized(
+                                            (selectedUri?.split("\n")?.size ?: 0).toString() + " ficheiros selecionados",
+                                            (selectedUri?.split("\n")?.size ?: 0).toString() + " files selected",
+                                            isPt
+                                        )
+                                    } else sourceName.ifBlank { "Audio file" },
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 2
                                 )
                                 Text(
-                                    selectedUri!!.substringBefore("?").take(54),
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        localized("Os WAV serão unidos pela ordem selecionada.", "WAV files will be joined in the selected order.", isPt)
+                                    } else selectedUri!!.substringBefore("?").take(54),
                                     color = AudioLabPalette.Muted,
                                     fontSize = 9.sp,
                                     maxLines = 1
@@ -325,6 +361,34 @@ fun ToolDetailScreen(
                 }
             }
 
+
+            if (tool.operation == ToolOperation.JOIN_WAV) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Unir vários ficheiros", "Join multiple files", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            localized(
+                                "Seleciona entre 2 e 20 WAV PCM. Todos devem ter a mesma taxa de amostragem, canais e profundidade de bits.",
+                                "Select 2–20 PCM WAV files. All must have the same sample rate, channels and bit depth.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
 
             if (tool.operation == ToolOperation.SPLIT_WAV) {
                 Spacer(Modifier.height(15.dp))
@@ -429,6 +493,11 @@ fun ToolDetailScreen(
                     "Split 8, 16, 24 or 32-bit integer PCM WAV. The result is a ZIP archive containing the segments.",
                     isPt
                 )
+                ToolOperation.JOIN_WAV -> localized(
+                    "União de 2 a 20 WAV PCM inteiros. Todos os ficheiros têm de ter a mesma taxa de amostragem, canais e profundidade de bits.",
+                    "Join 2–20 integer PCM WAV files. Every file must have the same sample rate, channel count and bit depth.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -441,35 +510,43 @@ fun ToolDetailScreen(
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
-                    val uri = selectedUri?.let(Uri::parse) ?: return@Button
+                    val sourceKey = selectedUri ?: return@Button
+                    val uri = if (tool.operation == ToolOperation.JOIN_WAV) null else Uri.parse(sourceKey)
                     when (tool.operation) {
                         ToolOperation.INSPECT_AUDIO ->
-                            AudioWorkScheduler.enqueueInspection(context, uri, sourceName)
+                            AudioWorkScheduler.enqueueInspection(context, uri ?: return@Button, sourceName)
                         ToolOperation.NORMALIZE_WAV ->
                             AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = true, gainDb = 0.0
+                                context, uri ?: return@Button, sourceName, tool.id, normalize = true, gainDb = 0.0
                             )
                         ToolOperation.GAIN_WAV ->
                             AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = false, gainDb = gainDb.toDouble()
+                                context, uri ?: return@Button, sourceName, tool.id, normalize = false, gainDb = gainDb.toDouble()
                             )
                         ToolOperation.TRIM_WAV ->
                             AudioWorkScheduler.enqueueWavTrim(
-                                context, uri, sourceName,
+                                context, uri ?: return@Button, sourceName,
                                 startMs = trimStartMs ?: return@Button,
                                 endMs = trimEndMs ?: return@Button
                             )
                         ToolOperation.SPLIT_WAV ->
                             AudioWorkScheduler.enqueueWavSplit(
-                                context, uri, sourceName,
+                                context, uri ?: return@Button, sourceName,
                                 partCount = splitParts ?: return@Button
                             )
+                        ToolOperation.JOIN_WAV -> AudioWorkScheduler.enqueueWavJoin(
+                            context,
+                            sourceKey.split("\n").map { Uri.parse(it) },
+                            sourceName
+                        )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
                 enabled = selectedUri != null && !isProcessing &&
                     (tool.operation == ToolOperation.INSPECT_AUDIO ||
                         sourceName.endsWith(".wav", ignoreCase = true)) &&
+                    (tool.operation != ToolOperation.JOIN_WAV ||
+                        sourceKeyCount(selectedUri) in 2..20) &&
                     (tool.operation != ToolOperation.TRIM_WAV || trimRangeValid) &&
                     (tool.operation != ToolOperation.SPLIT_WAV || splitParts != null),
                 modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -488,6 +565,7 @@ fun ToolDetailScreen(
                         ToolOperation.GAIN_WAV -> localized("Aplicar ganho", "Apply gain", isPt)
                         ToolOperation.TRIM_WAV -> localized("Cortar e exportar trecho", "Trim and export section", isPt)
                         ToolOperation.SPLIT_WAV -> localized("Dividir e exportar ZIP", "Split and export ZIP", isPt)
+                        ToolOperation.JOIN_WAV -> localized("Unir e exportar WAV", "Join and export WAV", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
@@ -708,6 +786,9 @@ private fun TextButtonLike(text: String, onClick: () -> Unit) {
         Text(text, color = AudioLabPalette.Cyan, fontSize = 12.sp)
     }
 }
+
+private fun sourceKeyCount(sourceKey: String?): Int =
+    sourceKey?.split("\n")?.count { it.isNotBlank() } ?: 0
 
 private fun queryDisplayName(context: android.content.Context, uri: Uri): String {
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
