@@ -1,5 +1,6 @@
 package com.nexauren.audiolabtools.ui
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.nexauren.audiolabtools.data.AudioToolCatalog
 import com.nexauren.audiolabtools.data.localized
 import com.nexauren.audiolabtools.ui.screens.HomeScreen
+import com.nexauren.audiolabtools.ui.screens.FavoritesScreen
 import com.nexauren.audiolabtools.ui.screens.LibraryScreen
 import com.nexauren.audiolabtools.ui.screens.ProcessingScreen
 import com.nexauren.audiolabtools.ui.screens.SettingsScreen
@@ -28,12 +31,18 @@ import com.nexauren.audiolabtools.ui.screens.ToolDetailScreen
 import com.nexauren.audiolabtools.ui.theme.AudioLabPalette
 
 private enum class Destination {
-    HOME, PROCESSING, LIBRARY, SETTINGS, TOOL
+    HOME, FAVORITES, PROCESSING, LIBRARY, SETTINGS, TOOL
 }
 
 @Composable
 fun AudioLabApp() {
     val context = LocalContext.current
+    val preferences = remember(context) {
+        context.getSharedPreferences("audio_lab_preferences", Context.MODE_PRIVATE)
+    }
+    var favoriteToolIds by remember {
+        mutableStateOf(preferences.getStringSet("favorite_tools", emptySet())?.toSet() ?: emptySet())
+    }
     var destination by rememberSaveable { mutableStateOf(Destination.HOME.name) }
     var previousDestination by rememberSaveable { mutableStateOf(Destination.HOME.name) }
     var selectedToolId by rememberSaveable { mutableStateOf("audio-info") }
@@ -64,6 +73,13 @@ fun AudioLabApp() {
         destination = previousDestination
     }
 
+    fun toggleFavorite(toolId: String) {
+        val updated = favoriteToolIds.toMutableSet()
+        if (!updated.add(toolId)) updated.remove(toolId)
+        favoriteToolIds = updated.toSet()
+        preferences.edit().putStringSet("favorite_tools", updated.toSet()).apply()
+    }
+
     BackHandler(enabled = destination == Destination.TOOL.name) {
         backFromTool()
     }
@@ -80,6 +96,7 @@ fun AudioLabApp() {
                 ) {
                     val items = listOf(
                         Triple(Destination.HOME, "⌂", localized("Início", "Home")),
+                        Triple(Destination.FAVORITES, "★", localized("Favoritos", "Saved")),
                         Triple(Destination.PROCESSING, "◷", localized("Processos", "Queue")),
                         Triple(Destination.LIBRARY, "♫", localized("Ficheiros", "Files")),
                         Triple(Destination.SETTINGS, "⚙", localized("Definições", "Settings"))
@@ -112,7 +129,14 @@ fun AudioLabApp() {
                 Destination.HOME -> HomeScreen(
                     onOpenTool = { tool -> openTool(tool.id) },
                     onOpenProcessing = { destination = Destination.PROCESSING.name },
-                    onOpenLibrary = { destination = Destination.LIBRARY.name }
+                    onOpenLibrary = { destination = Destination.LIBRARY.name },
+                    favoriteToolIds = favoriteToolIds,
+                    onToggleFavorite = ::toggleFavorite
+                )
+                Destination.FAVORITES -> FavoritesScreen(
+                    favoriteToolIds = favoriteToolIds,
+                    onOpenTool = { tool -> openTool(tool.id) },
+                    onToggleFavorite = ::toggleFavorite
                 )
                 Destination.PROCESSING -> ProcessingScreen()
                 Destination.LIBRARY -> LibraryScreen(
