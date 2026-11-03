@@ -144,6 +144,41 @@ object AudioWorkScheduler {
     }
 
 
+    fun enqueueWavFade(
+        context: Context,
+        uri: Uri,
+        sourceName: String,
+        fadeIn: Boolean,
+        fadeDurationMs: Long
+    ): String {
+        require(fadeDurationMs in 1L..60_000L) { "Fade duration must be between 1 ms and 60 seconds." }
+        val toolId = if (fadeIn) "fade-in" else "fade-out"
+        val uniqueName = uniqueName(toolId, uri)
+        val request = OneTimeWorkRequestBuilder<WavProcessingWorker>()
+            .setInputData(
+                workDataOf(
+                    ProcessingContract.KEY_INPUT_URI to uri.toString(),
+                    ProcessingContract.KEY_SOURCE_NAME to sourceName,
+                    ProcessingContract.KEY_TOOL_ID to toolId,
+                    ProcessingContract.KEY_FADE_MS to fadeDurationMs,
+                    ProcessingContract.KEY_NORMALIZE to false,
+                    ProcessingContract.KEY_GAIN_DB to 0.0
+                )
+            )
+            .addTag(ProcessingContract.TAG_PROCESSING)
+            .addTag(ProcessingContract.toolTag(toolId))
+            .addTag(ProcessingContract.sourceTag(uri.toString()))
+            .addTag(ProcessingContract.sourceNameTag(sourceName))
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            uniqueName,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        return uniqueName
+    }
+
     fun enqueueWavJoin(
         context: Context,
         uris: List<Uri>,
