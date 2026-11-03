@@ -68,8 +68,13 @@ fun ToolDetailScreen(
     val isPt = isPortuguese()
     val workManager = WorkManager.getInstance(context)
 
-    var selectedUri by rememberSaveable(tool.id, initialUri) { mutableStateOf(initialUri) }
-    var sourceName by rememberSaveable(tool.id, initialName) { mutableStateOf(initialName.orEmpty()) }
+    val validInitialUri = initialUri?.takeIf {
+        tool.id == "join-audio" || !it.contains("\n")
+    }
+    var selectedUri by rememberSaveable(tool.id, validInitialUri) { mutableStateOf(validInitialUri) }
+    var sourceName by rememberSaveable(tool.id, initialName) {
+        mutableStateOf(if (validInitialUri != null) initialName.orEmpty() else "")
+    }
     var gainDb by rememberSaveable(tool.id) { mutableStateOf(3f) }
     var trimStartSeconds by rememberSaveable(tool.id) { mutableStateOf("0") }
     var trimEndSeconds by rememberSaveable(tool.id) { mutableStateOf("10") }
@@ -280,7 +285,13 @@ fun ToolDetailScreen(
                             }
                             TextButtonLike(
                                 text = localized("Trocar", "Change", isPt),
-                                onClick = { picker.launch(arrayOf("audio/*")) }
+                                onClick = {
+                                    if (tool.operation == ToolOperation.JOIN_WAV) {
+                                        multiPicker.launch(arrayOf("audio/*"))
+                                    } else {
+                                        picker.launch(arrayOf("audio/*"))
+                                    }
+                                }
                             )
                         }
                     }
@@ -594,7 +605,7 @@ fun ToolDetailScreen(
                         val intent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(
                                 Uri.parse(output),
-                                info.outputData.getString(ProcessingContract.KEY_OUTPUT_MIME) ?: "audio/*"
+                                workInfo.outputData.getString(ProcessingContract.KEY_OUTPUT_MIME) ?: "audio/*"
                             )
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
