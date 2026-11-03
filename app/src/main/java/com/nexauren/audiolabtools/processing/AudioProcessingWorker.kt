@@ -19,6 +19,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.BufferedOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class AudioInspectionWorker(
     appContext: Context,
@@ -105,6 +108,8 @@ class WavProcessingWorker(
         val toolId = inputData.getString(ProcessingContract.KEY_TOOL_ID).orEmpty()
         val startMs = inputData.getLong(ProcessingContract.KEY_START_MS, 0L)
         val endMs = inputData.getLong(ProcessingContract.KEY_END_MS, 0L)
+        val splitParts = inputData.getInt(ProcessingContract.KEY_SPLIT_PARTS, 2)
+        val isArchive = toolId == "split-audio"
         val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME) ?: "audio.wav"
         val safeBase = sourceName.substringBeforeLast('.', sourceName)
             .replace(Regex("[^A-Za-z0-9_-]"), "_")
@@ -113,8 +118,9 @@ class WavProcessingWorker(
 
         val cacheFolder = File(applicationContext.cacheDir, "audio")
         val exportFolder = File(
-            applicationContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
-                ?: applicationContext.filesDir,
+            applicationContext.getExternalFilesDir(
+                if (isArchive) Environment.DIRECTORY_DOWNLOADS else Environment.DIRECTORY_MUSIC
+            ) ?: applicationContext.filesDir,
             "AudioLab"
         )
         cacheFolder.mkdirs()
@@ -123,10 +129,15 @@ class WavProcessingWorker(
         val sourceCopy = File.createTempFile("source_", ".wav", cacheFolder)
         val suffix = when {
             toolId == "trim-audio" -> "_trimmed"
+            isArchive -> "_parts"
             normalize -> "_normalized"
             else -> "_gain"
         }
-        val outputFile = File(exportFolder, safeBase + suffix + "_" + System.currentTimeMillis() + ".wav")
+        val outputFile = File(
+            exportFolder,
+            safeBase + suffix + "_" + System.currentTimeMillis() + if (isArchive) ".zip" else ".wav"
+        )
+        val splitFolder = File(cacheFolder, "split_" + System.currentTimeMillis())
 
         return try {
             setProgress(workDataOf(
@@ -168,16 +179,50 @@ class WavProcessingWorker(
                     }
                 ))
             }
-            val summary = if (toolId == "trim-audio") {
-                WavPcmProcessor.trim(
+            val summary = when {
+                toolId == "trim-audio" -> WavPcmProcessor.trim(
                     source = sourceCopy,
                     destination = outputFile,
                     startMs = startMs,
                     endMs = endMs,
                     onProgress = reportProgress
                 )
-            } else {
-                WavPcmProcessor.process(
+                isArchive -> {
+                    val parts = WavPcmProcessor.splitIntoParts(
+                        source = sourceCopy,
+                        outputFolder = splitFolder,
+                        baseName = safeBase,
+                        partCount = splitParts
+                    ) { progress ->
+                        setProgress(workDataOf(
+                            ProcessingContract.KEY_PROGRESS to (10 + progress * 0.75).coerceAtMost(85),
+                            ProcessingContract.KEY_STAGE to "Splitting WAV into part " +
+                                ((progress * splitParts / 100) + 1).coerceAtMost(splitParts) +
+                                " of " + splitParts
+                        ))
+                    }
+                    withContext(Dispatchers.IO) {
+                        ZipOutputStream(BufferedOutputStream(FileOutputStream(outputFile))).use { zip ->
+                            val buffer = ByteArray(64 * 1024)
+                            parts.forEach { part ->
+                                currentCoroutineContext().ensureActive()
+                                zip.putNextEntry(ZipEntry(part.name))
+                                part.inputStream().use { input ->
+                                    while (true) {
+                                        currentCoroutineContext().ensureActive()
+                                        val count = input.read(buffer)
+                                        if (count < 0) break
+                                        zip.write(buffer, 0, count)
+                                    }
+                                }
+                                zip.closeEntry()
+                            }
+                        }
+                    }
+                    parts.forEach(File::delete)
+                    null
+                }
+                else -> WavPcmProcessor.process(
                     source = sourceCopy,
                     destination = outputFile,
                     normalize = normalize,
@@ -191,19 +236,21 @@ class WavProcessingWorker(
                 ProcessingContract.KEY_STAGE to "Saving result"
             ))
             val outputSize = outputFile.length()
+            val outputMime = if (isArchive) "application/zip" else "audio/wav"
             val outputUri = withContext(Dispatchers.IO) {
-                publishOutput(applicationContext, outputFile)
+                publishOutput(applicationContext, outputFile, outputMime, isArchive)
             }
 
             Result.success(
                 workDataOf(
                     ProcessingContract.KEY_OUTPUT_URI to outputUri.toString(),
                     ProcessingContract.KEY_OUTPUT_NAME to outputFile.name,
+                    ProcessingContract.KEY_OUTPUT_MIME to outputMime,
                     ProcessingContract.KEY_SIZE to outputSize,
-                    ProcessingContract.KEY_SAMPLE_RATE to summary.sampleRate,
-                    ProcessingContract.KEY_CHANNELS to summary.channels,
-                    ProcessingContract.KEY_BITS to summary.bitsPerSample,
-                    ProcessingContract.KEY_APPLIED_GAIN to summary.appliedGain,
+                    ProcessingContract.KEY_SAMPLE_RATE to (summary?.sampleRate ?: 0),
+                    ProcessingContract.KEY_CHANNELS to (summary?.channels ?: 0),
+                    ProcessingContract.KEY_BITS to (summary?.bitsPerSample ?: 0),
+                    ProcessingContract.KEY_APPLIED_GAIN to (summary?.appliedGain ?: 1.0),
                     ProcessingContract.KEY_PROGRESS to 100
                 )
             )
@@ -218,22 +265,34 @@ class WavProcessingWorker(
             )
         } finally {
             sourceCopy.delete()
+            splitFolder.deleteRecursively()
         }
     }
 
-    private fun publishOutput(context: Context, file: File): Uri {
+    private fun publishOutput(
+        context: Context,
+        file: File,
+        mimeType: String,
+        isArchive: Boolean
+    ): Uri {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_MUSIC + "/Audio Lab"
+                    (if (isArchive) Environment.DIRECTORY_DOWNLOADS else Environment.DIRECTORY_MUSIC) +
+                        "/Audio Lab"
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
+            val collection = if (isArchive) {
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            }
             val uri = context.contentResolver.insert(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                collection,
                 values
             ) ?: throw IllegalStateException("Android could not create the output file.")
 
