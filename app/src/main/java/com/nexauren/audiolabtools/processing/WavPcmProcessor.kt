@@ -248,6 +248,86 @@ object WavPcmProcessor {
         }
     }
 
+
+    /**
+     * Concatenates PCM frame data from compatible integer-PCM WAV files.
+     * The source format must match exactly and data is copied in bounded buffers.
+     */
+    suspend fun join(
+        sources: List<File>,
+        destination: File,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(sources.size in 2..20) { "Choose between 2 and 20 WAV files." }
+        require(sources.all { it.isFile && it.length() > 44L }) {
+            "Every selected source must be a valid WAV file."
+        }
+
+        val infos = sources.map(::readInfo)
+        val reference = infos.first()
+        require(infos.all {
+            it.sampleRate == reference.sampleRate &&
+                it.channels == reference.channels &&
+                it.bitsPerSample == reference.bitsPerSample &&
+                it.blockAlign == reference.blockAlign
+        }) {
+            "All WAV files must use the same sample rate, channel count and bit depth."
+        }
+
+        var totalBytes = 0L
+        for (info in infos) {
+            require(info.dataSize % info.blockAlign == 0L) { "A WAV data chunk is incomplete." }
+            require(totalBytes <= 0xFFFF_FFFFL - 37L - info.dataSize) {
+                "The combined audio is too large for standard RIFF/WAV output."
+            }
+            totalBytes += info.dataSize
+        }
+        require(totalBytes > 0L) { "The selected WAV files contain no audio samples." }
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(destination, "rw").use { output ->
+            output.setLength(0L)
+            writeHeader(output, reference.copy(dataSize = totalBytes))
+            val bufferSize = max(reference.blockAlign, (64 * 1024 / reference.blockAlign) * reference.blockAlign)
+            val buffer = ByteArray(bufferSize)
+            var copiedTotal = 0L
+            var lastProgress = -1
+
+            sources.forEachIndexed { index, file ->
+                currentCoroutineContext().ensureActive()
+                RandomAccessFile(file, "r").use { input ->
+                    input.seek(infos[index].dataOffset)
+                    var remaining = infos[index].dataSize
+                    while (remaining > 0L) {
+                        currentCoroutineContext().ensureActive()
+                        val count = minOf(buffer.size.toLong(), remaining).toInt()
+                        input.readFully(buffer, 0, count)
+                        output.write(buffer, 0, count)
+                        copiedTotal += count
+                        remaining -= count
+
+                        val progress = (copiedTotal * 100L / totalBytes).toInt().coerceAtMost(99)
+                        if (progress != lastProgress) {
+                            onProgress(progress)
+                            lastProgress = progress
+                        }
+                    }
+                }
+            }
+            if (totalBytes % 2L == 1L) output.write(0)
+            output.fd.sync()
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = reference.sampleRate,
+            channels = reference.channels,
+            bitsPerSample = reference.bitsPerSample,
+            frames = totalBytes / reference.blockAlign,
+            appliedGain = 1.0
+        )
+    }
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
