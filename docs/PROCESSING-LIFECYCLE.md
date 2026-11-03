@@ -14,6 +14,8 @@ These rules apply to every Audio Lab tool. They are product behavior, not just l
 - Require an explicit user action.
 - Validate source URI access, file type, options and destination before enqueueing.
 - For split jobs, validate the requested part count (2–20), WAV PCM format and frame availability before writing any published result.
+- For multi-file join jobs, validate all sources use the same sample rate, channel count and bit depth.
+- For reverse jobs, reverse whole PCM frames so left/right channel samples remain aligned.
 - Submit a uniquely named WorkManager job with a tool tag.
 - Disable repeated taps while submission is being confirmed.
 - Show stages and progress from the worker rather than inventing progress in the UI.
