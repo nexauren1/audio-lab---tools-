@@ -102,6 +102,79 @@ object WavPcmProcessor {
         )
     }
 
+
+    /**
+     * Exports a time range from an integer-PCM WAV file without decoding the
+     * entire file into memory. Boundaries are aligned to complete PCM frames.
+     */
+    suspend fun trim(
+        source: File,
+        destination: File,
+        startMs: Long,
+        endMs: Long,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(startMs >= 0L && endMs > startMs) { "The end time must be greater than the start time." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val totalFrames = info.dataSize / info.blockAlign
+        val durationMs = totalFrames * 1000L / info.sampleRate
+        require(endMs <= durationMs) { "The selected end time is beyond the audio duration." }
+
+        val startFrame = (startMs * info.sampleRate / 1000L).coerceIn(0L, totalFrames)
+        val endFrame = (endMs * info.sampleRate / 1000L).coerceIn(0L, totalFrames)
+        require(endFrame > startFrame) { "The selected range is shorter than one audio frame." }
+
+        val selectedFrames = endFrame - startFrame
+        val selectedBytes = selectedFrames * info.blockAlign
+        require(selectedBytes <= 0xFFFF_FFFFL - 37L) {
+            "The selected range is too large for standard RIFF/WAV output."
+        }
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info.copy(dataSize = selectedBytes))
+                input.seek(info.dataOffset + startFrame * info.blockAlign)
+
+                val bytesPerBlock = max(info.blockAlign, (64 * 1024 / info.blockAlign) * info.blockAlign)
+                val buffer = ByteArray(bytesPerBlock)
+                var remaining = selectedBytes
+                var copied = 0L
+                var lastProgress = -1
+
+                onProgress(5)
+                while (remaining > 0L) {
+                    currentCoroutineContext().ensureActive()
+                    val count = minOf(buffer.size.toLong(), remaining).toInt()
+                    input.readFully(buffer, 0, count)
+                    output.write(buffer, 0, count)
+                    copied += count
+                    remaining -= count
+                    val progress = (5 + copied * 90L / selectedBytes).toInt().coerceAtMost(95)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+                if (selectedBytes % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = selectedFrames,
+            appliedGain = 1.0
+        )
+    }
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
