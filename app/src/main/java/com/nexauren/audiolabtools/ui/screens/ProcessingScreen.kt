@@ -120,7 +120,10 @@ fun ProcessingScreen() {
                     onOpenOutput = { uri ->
                         try {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.parse(uri), "audio/*")
+                                setDataAndType(
+                                    Uri.parse(uri),
+                                    info.outputData.getString(ProcessingContract.KEY_OUTPUT_MIME) ?: "audio/*"
+                                )
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(intent)
