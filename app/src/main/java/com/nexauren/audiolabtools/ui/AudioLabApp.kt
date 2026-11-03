@@ -2,6 +2,19 @@ package com.nexauren.audiolabtools.ui
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,8 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.nexauren.audiolabtools.data.AudioToolCatalog
 import com.nexauren.audiolabtools.data.localized
-import com.nexauren.audiolabtools.ui.screens.HomeScreen
 import com.nexauren.audiolabtools.ui.screens.FavoritesScreen
+import com.nexauren.audiolabtools.ui.screens.HomeScreen
 import com.nexauren.audiolabtools.ui.screens.LibraryScreen
 import com.nexauren.audiolabtools.ui.screens.ProcessingScreen
 import com.nexauren.audiolabtools.ui.screens.SettingsScreen
@@ -85,11 +98,27 @@ fun AudioLabApp() {
     }
 
     val current = Destination.valueOf(destination)
+    // A tool ID is part of the page key so moving directly between tools also animates.
+    val pageKey = if (current == Destination.TOOL) {
+        "TOOL:$selectedToolId"
+    } else {
+        current.name
+    }
 
     Scaffold(
         containerColor = AudioLabPalette.Background,
         bottomBar = {
-            if (current != Destination.TOOL) {
+            AnimatedVisibility(
+                visible = current != Destination.TOOL,
+                enter = slideInVertically(
+                    initialOffsetY = { it / 2 },
+                    animationSpec = tween(220)
+                ) + fadeIn(animationSpec = tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it / 2 },
+                    animationSpec = tween(160)
+                ) + fadeOut(animationSpec = tween(140))
+            ) {
                 NavigationBar(
                     containerColor = Color(0xFF0A1120),
                     tonalElevation = 0.dp
@@ -120,42 +149,77 @@ fun AudioLabApp() {
             }
         }
     ) { innerPadding ->
-        Box(
+        AnimatedContent(
+            targetState = pageKey,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when (current) {
-                Destination.HOME -> HomeScreen(
-                    onOpenTool = { tool -> openTool(tool.id) },
-                    onOpenProcessing = { destination = Destination.PROCESSING.name },
-                    onOpenLibrary = { destination = Destination.LIBRARY.name },
-                    favoriteToolIds = favoriteToolIds,
-                    onToggleFavorite = ::toggleFavorite
-                )
-                Destination.FAVORITES -> FavoritesScreen(
-                    favoriteToolIds = favoriteToolIds,
-                    onOpenTool = { tool -> openTool(tool.id) },
-                    onToggleFavorite = ::toggleFavorite
-                )
-                Destination.PROCESSING -> ProcessingScreen()
-                Destination.LIBRARY -> LibraryScreen(
-                    onOpenFile = { uri, name -> openTool("audio-info", uri, name) }
-                )
-                Destination.SETTINGS -> SettingsScreen()
-                Destination.TOOL -> {
-                    val tool = AudioToolCatalog.find(selectedToolId)
-                    if (tool != null) {
-                        ToolDetailScreen(
-                            tool = tool,
-                            initialUri = selectedFileUri,
-                            initialName = selectedFileName,
-                            onSourceSelected = { uri, name ->
-                                selectedFileUri = uri
-                                selectedFileName = name
-                            },
-                            onBack = ::backFromTool
+                .padding(innerPadding),
+            transitionSpec = {
+                (
+                    fadeIn(animationSpec = tween(230)) +
+                        slideInHorizontally(
+                            initialOffsetX = { width -> width / 14 },
+                            animationSpec = tween(230)
+                        ) +
+                        scaleIn(
+                            initialScale = 0.985f,
+                            animationSpec = tween(230)
                         )
+                    ) togetherWith (
+                    fadeOut(animationSpec = tween(160)) +
+                        slideOutHorizontally(
+                            targetOffsetX = { width -> -width / 18 },
+                            animationSpec = tween(160)
+                        ) +
+                        scaleOut(
+                            targetScale = 0.992f,
+                            animationSpec = tween(160)
+                        )
+                    ) using SizeTransform(clip = false)
+            },
+            label = "audio_lab_page_transition"
+        ) { animatedPageKey ->
+            val screen = Destination.valueOf(animatedPageKey.substringBefore(':'))
+            val screenToolId = animatedPageKey
+                .takeIf { it.startsWith("TOOL:") }
+                ?.substringAfter(':')
+                ?: selectedToolId
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (screen) {
+                    Destination.HOME -> HomeScreen(
+                        onOpenTool = { tool -> openTool(tool.id) },
+                        onOpenProcessing = { destination = Destination.PROCESSING.name },
+                        onOpenLibrary = { destination = Destination.LIBRARY.name },
+                        favoriteToolIds = favoriteToolIds,
+                        onToggleFavorite = ::toggleFavorite
+                    )
+                    Destination.FAVORITES -> FavoritesScreen(
+                        favoriteToolIds = favoriteToolIds,
+                        onOpenTool = { tool -> openTool(tool.id) },
+                        onToggleFavorite = ::toggleFavorite
+                    )
+                    Destination.PROCESSING -> ProcessingScreen()
+                    Destination.LIBRARY -> LibraryScreen(
+                        onOpenFile = { uri, name -> openTool("audio-info", uri, name) }
+                    )
+                    Destination.SETTINGS -> SettingsScreen()
+                    Destination.TOOL -> {
+                        val tool = AudioToolCatalog.find(screenToolId)
+                        if (tool != null) {
+                            ToolDetailScreen(
+                                tool = tool,
+                                initialUri = if (screenToolId == selectedToolId) selectedFileUri else null,
+                                initialName = if (screenToolId == selectedToolId) selectedFileName else null,
+                                onSourceSelected = { uri, name ->
+                                    if (screenToolId == selectedToolId) {
+                                        selectedFileUri = uri
+                                        selectedFileName = name
+                                    }
+                                },
+                                onBack = ::backFromTool
+                            )
+                        }
                     }
                 }
             }
