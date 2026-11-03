@@ -73,6 +73,7 @@ fun ToolDetailScreen(
     var gainDb by rememberSaveable(tool.id) { mutableStateOf(3f) }
     var trimStartSeconds by rememberSaveable(tool.id) { mutableStateOf("0") }
     var trimEndSeconds by rememberSaveable(tool.id) { mutableStateOf("10") }
+    var splitPartCount by rememberSaveable(tool.id) { mutableStateOf("3") }
 
     val trimStartMs = trimStartSeconds.toDoubleOrNull()
         ?.takeIf { it.isFinite() && it >= 0.0 }
@@ -81,6 +82,7 @@ fun ToolDetailScreen(
         ?.takeIf { it.isFinite() && it >= 0.0 }
         ?.times(1000.0)?.toLong()
     val trimRangeValid = trimStartMs != null && trimEndMs != null && trimEndMs > trimStartMs
+    val splitParts = splitPartCount.toIntOrNull()?.takeIf { it in 2..20 }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -323,6 +325,53 @@ fun ToolDetailScreen(
                 }
             }
 
+
+            if (tool.operation == ToolOperation.SPLIT_WAV) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Número de partes", "Number of parts", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(9.dp))
+                        OutlinedTextField(
+                            value = splitPartCount,
+                            onValueChange = { splitPartCount = it.filter(Char::isDigit).take(2) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Partes (2–20)", "Parts (2–20)")) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AudioLabPalette.Cyan,
+                                unfocusedBorderColor = AudioLabPalette.Border,
+                                focusedLabelColor = AudioLabPalette.Cyan,
+                                unfocusedLabelColor = AudioLabPalette.Muted,
+                                cursorColor = AudioLabPalette.Cyan
+                            )
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            localized(
+                                "As partes terão durações praticamente iguais. O resultado será um ZIP com os ficheiros WAV separados.",
+                                "Parts will have nearly equal durations. The result is a ZIP containing separate WAV files.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
             if (tool.operation == ToolOperation.GAIN_WAV) {
                 Spacer(Modifier.height(15.dp))
                 Card(
@@ -375,6 +424,11 @@ fun ToolDetailScreen(
                     "Trim 8, 16, 24 or 32-bit integer PCM WAV. The range is aligned to complete audio frames.",
                     isPt
                 )
+                ToolOperation.SPLIT_WAV -> localized(
+                    "Divisão WAV PCM inteiro de 8, 16, 24 ou 32 bits. O resultado é um arquivo ZIP com os segmentos.",
+                    "Split 8, 16, 24 or 32-bit integer PCM WAV. The result is a ZIP archive containing the segments.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -405,13 +459,19 @@ fun ToolDetailScreen(
                                 startMs = trimStartMs ?: return@Button,
                                 endMs = trimEndMs ?: return@Button
                             )
+                        ToolOperation.SPLIT_WAV ->
+                            AudioWorkScheduler.enqueueWavSplit(
+                                context, uri, sourceName,
+                                partCount = splitParts ?: return@Button
+                            )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
                 enabled = selectedUri != null && !isProcessing &&
                     (tool.operation == ToolOperation.INSPECT_AUDIO ||
                         sourceName.endsWith(".wav", ignoreCase = true)) &&
-                    (tool.operation != ToolOperation.TRIM_WAV || trimRangeValid),
+                    (tool.operation != ToolOperation.TRIM_WAV || trimRangeValid) &&
+                    (tool.operation != ToolOperation.SPLIT_WAV || splitParts != null),
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1769D2),
@@ -427,6 +487,7 @@ fun ToolDetailScreen(
                         ToolOperation.NORMALIZE_WAV -> localized("Normalizar áudio", "Normalize audio", isPt)
                         ToolOperation.GAIN_WAV -> localized("Aplicar ganho", "Apply gain", isPt)
                         ToolOperation.TRIM_WAV -> localized("Cortar e exportar trecho", "Trim and export section", isPt)
+                        ToolOperation.SPLIT_WAV -> localized("Dividir e exportar ZIP", "Split and export ZIP", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
@@ -453,7 +514,10 @@ fun ToolDetailScreen(
                 onOpenOutput = { output ->
                     try {
                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(Uri.parse(output), "audio/*")
+                            setDataAndType(
+                                Uri.parse(output),
+                                info.outputData.getString(ProcessingContract.KEY_OUTPUT_MIME) ?: "audio/*"
+                            )
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                         context.startActivity(intent)
