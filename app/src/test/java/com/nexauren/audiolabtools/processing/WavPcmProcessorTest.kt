@@ -273,6 +273,77 @@ class WavPcmProcessorTest {
         }
     }
 
+    @Test
+    fun echoCreatesDelayedRepeatsWithoutCrossingStereoChannels() = runBlocking {
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
+        try {
+            val input = File(folder, "stereo.wav")
+            val output = File(folder, "echo.wav")
+            writeStereoPcm16Wav(
+                input,
+                shortArrayOf(10000, 1000, 5000, 500, -5000, -500, -10000, -1000),
+                sampleRate = 8000
+            )
+
+            val summary = WavPcmProcessor.echo(
+                source = input,
+                destination = output,
+                delayMs = 40L,
+                feedback = 0.35,
+                mix = 0.5,
+                onProgress = {}
+            )
+
+            assertEquals(4L + 320L * 8L, summary.frames)
+            assertEquals(2, summary.channels)
+            assertTrue(readPcm16Sample(output, frame = 0, channel = 0) in 9990..10000)
+            assertTrue(readPcm16Sample(output, frame = 320, channel = 0) in 4900..5100)
+            assertTrue(readPcm16Sample(output, frame = 320, channel = 1) in 450..550)
+            assertTrue(readPcm16Sample(output, frame = 640, channel = 0) in 1600..1900)
+            assertTrue(output.length() > input.length())
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun reverbCreatesASeparateStereoTailAndPreservesInputChannels() = runBlocking {
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
+        try {
+            val input = File(folder, "stereo.wav")
+            val output = File(folder, "reverb.wav")
+            writeStereoPcm16Wav(
+                input,
+                shortArrayOf(10000, 1000, 5000, 500, -5000, -500, -10000, -1000),
+                sampleRate = 8000
+            )
+
+            val summary = WavPcmProcessor.reverb(
+                source = input,
+                destination = output,
+                decay = 0.68,
+                mix = 0.5,
+                onProgress = {}
+            )
+
+            assertEquals(2, summary.channels)
+            assertTrue(summary.frames > 8000L)
+            assertTrue(readPcm16Sample(output, frame = 0, channel = 0) in 4900..5100)
+            assertTrue(readPcm16Sample(output, frame = 0, channel = 1) in 450..550)
+            assertTrue(readPcm16Sample(output, frame = 232, channel = 0) in 1500..1800)
+            assertTrue(readPcm16Sample(output, frame = 232, channel = 1) in 140..190)
+            assertTrue(output.length() > input.length())
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    private fun readPcm16Sample(file: File, frame: Long, channel: Int): Int =
+        RandomAccessFile(file, "r").use { wav ->
+            wav.seek(44L + frame * 4L + channel * 2L)
+            wav.readShortLE().toInt()
+        }
+
     private fun readRiffHeader(file: File): String =
         RandomAccessFile(file, "r").use {
             val bytes = ByteArray(4)
