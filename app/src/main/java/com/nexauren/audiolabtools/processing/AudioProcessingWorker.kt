@@ -1,0 +1,238 @@
+package com.nexauren.audiolabtools.processing
+
+import android.content.ContentValues
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+
+class AudioInspectionWorker(
+    appContext: Context,
+    params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val uri = inputData.getString(ProcessingContract.KEY_INPUT_URI)?.let(Uri::parse)
+            ?: return@withContext Result.failure(
+                workDataOf(ProcessingContract.KEY_ERROR to "No audio file was selected.")
+            )
+
+        try {
+            setProgress(workDataOf(
+                ProcessingContract.KEY_PROGRESS to 15,
+                ProcessingContract.KEY_STAGE to "Reading file details"
+            ))
+
+            val details = queryFileDetails(applicationContext, uri)
+            val retriever = MediaMetadataRetriever()
+            val metadata = try {
+                retriever.setDataSource(applicationContext, uri)
+                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                val sampleRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                val tracks = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_NUM_TRACKS)
+                listOf(duration, bitrate, sampleRate, tracks)
+            } finally {
+                retriever.release()
+            }
+
+            setProgress(workDataOf(
+                ProcessingContract.KEY_PROGRESS to 100,
+                ProcessingContract.KEY_STAGE to "Analysis complete"
+            ))
+
+            Result.success(
+                workDataOf(
+                    ProcessingContract.KEY_SOURCE_NAME to details.first,
+                    ProcessingContract.KEY_SIZE to details.second,
+                    ProcessingContract.KEY_MIME to (applicationContext.contentResolver.getType(uri) ?: "Unknown"),
+                    ProcessingContract.KEY_DURATION to (metadata[0]?.toLongOrNull() ?: 0L),
+                    ProcessingContract.KEY_BITRATE to (metadata[1]?.toLongOrNull() ?: 0L),
+                    ProcessingContract.KEY_SAMPLE_RATE to (metadata[2]?.toIntOrNull() ?: 0),
+                    "track_count" to (metadata[3]?.toIntOrNull() ?: 0)
+                )
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(
+                workDataOf(ProcessingContract.KEY_ERROR to
+                    (error.message ?: "The selected file could not be inspected."))
+            )
+        }
+    }
+
+    private fun queryFileDetails(context: Context, uri: Uri): Pair<String, Long> {
+        val projection = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
+        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                val name = if (nameIndex >= 0) cursor.getString(nameIndex) else "Audio file"
+                val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else 0L
+                return (name ?: "Audio file") to size
+            }
+        }
+        return "Audio file" to 0L
+    }
+}
+
+class WavProcessingWorker(
+    appContext: Context,
+    params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
+
+    override suspend fun doWork(): Result {
+        val uri = inputData.getString(ProcessingContract.KEY_INPUT_URI)?.let(Uri::parse)
+            ?: return Result.failure(workDataOf(ProcessingContract.KEY_ERROR to "No audio file was selected."))
+
+        val normalize = inputData.getBoolean(ProcessingContract.KEY_NORMALIZE, false)
+        val gainDb = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 0.0)
+        val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME) ?: "audio.wav"
+        val safeBase = sourceName.substringBeforeLast('.', sourceName)
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(48)
+            .ifBlank { "audio" }
+
+        val cacheFolder = File(applicationContext.cacheDir, "audio")
+        val exportFolder = File(
+            applicationContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
+                ?: applicationContext.filesDir,
+            "AudioLab"
+        )
+        cacheFolder.mkdirs()
+        exportFolder.mkdirs()
+
+        val sourceCopy = File.createTempFile("source_", ".wav", cacheFolder)
+        val suffix = if (normalize) "_normalized" else "_gain"
+        val outputFile = File(exportFolder, safeBase + suffix + "_" + System.currentTimeMillis() + ".wav")
+
+        return try {
+            setProgress(workDataOf(
+                ProcessingContract.KEY_PROGRESS to 2,
+                ProcessingContract.KEY_STAGE to "Importing source file"
+            ))
+
+            withContext(Dispatchers.IO) {
+                val source = applicationContext.contentResolver.openInputStream(uri)
+                    ?: throw IllegalArgumentException("Android could not open this audio file.")
+                source.use { input ->
+                    FileOutputStream(sourceCopy).use { output ->
+                        val buffer = ByteArray(128 * 1024)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        output.fd.sync()
+                    }
+                }
+            }
+
+            setProgress(workDataOf(
+                ProcessingContract.KEY_PROGRESS to 10,
+                ProcessingContract.KEY_STAGE to "Checking WAV format"
+            ))
+
+            val summary = WavPcmProcessor.process(
+                source = sourceCopy,
+                destination = outputFile,
+                normalize = normalize,
+                gainDb = gainDb
+            ) { progress ->
+                setProgress(workDataOf(
+                    ProcessingContract.KEY_PROGRESS to progress,
+                    ProcessingContract.KEY_STAGE to if (progress < 25) "Analysing audio peak" else "Processing PCM samples"
+                ))
+            }
+
+            setProgress(workDataOf(
+                ProcessingContract.KEY_PROGRESS to 97,
+                ProcessingContract.KEY_STAGE to "Saving result"
+            ))
+            val outputSize = outputFile.length()
+            val outputUri = withContext(Dispatchers.IO) {
+                publishOutput(applicationContext, outputFile)
+            }
+
+            Result.success(
+                workDataOf(
+                    ProcessingContract.KEY_OUTPUT_URI to outputUri.toString(),
+                    ProcessingContract.KEY_OUTPUT_NAME to outputFile.name,
+                    ProcessingContract.KEY_SIZE to outputSize,
+                    ProcessingContract.KEY_SAMPLE_RATE to summary.sampleRate,
+                    ProcessingContract.KEY_CHANNELS to summary.channels,
+                    ProcessingContract.KEY_BITS to summary.bitsPerSample,
+                    ProcessingContract.KEY_APPLIED_GAIN to summary.appliedGain,
+                    ProcessingContract.KEY_PROGRESS to 100
+                )
+            )
+        } catch (cancelled: CancellationException) {
+            outputFile.delete()
+            throw cancelled
+        } catch (error: Exception) {
+            outputFile.delete()
+            Result.failure(
+                workDataOf(ProcessingContract.KEY_ERROR to
+                    (error.message ?: "Audio processing failed."))
+            )
+        } finally {
+            sourceCopy.delete()
+        }
+    }
+
+    private fun publishOutput(context: Context, file: File): Uri {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_MUSIC + "/Audio Lab"
+                )
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                values
+            ) ?: throw IllegalStateException("Android could not create the output file.")
+
+            try {
+                context.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                    file.inputStream().use { input -> input.copyTo(output) }
+                } ?: throw IllegalStateException("Android could not write the output file.")
+
+                val completed = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                context.contentResolver.update(uri, completed, null, null)
+                file.delete()
+                return uri
+            } catch (error: Exception) {
+                context.contentResolver.delete(uri, null, null)
+                throw error
+            }
+        }
+
+        return FileProvider.getUriForFile(
+            context,
+            context.packageName + ".fileprovider",
+            file
+        )
+    }
+}
