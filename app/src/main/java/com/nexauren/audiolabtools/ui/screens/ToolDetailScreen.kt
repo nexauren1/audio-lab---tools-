@@ -80,6 +80,10 @@ fun ToolDetailScreen(
     var trimEndSeconds by rememberSaveable(tool.id) { mutableStateOf("10") }
     var splitPartCount by rememberSaveable(tool.id) { mutableStateOf("3") }
     var fadeDurationSeconds by rememberSaveable(tool.id) { mutableStateOf("1.0") }
+    var echoDelayMs by rememberSaveable(tool.id) { mutableStateOf(240f) }
+    var echoFeedback by rememberSaveable(tool.id) { mutableStateOf(0.38f) }
+    var effectMix by rememberSaveable(tool.id) { mutableStateOf(0.4f) }
+    var reverbDecay by rememberSaveable(tool.id) { mutableStateOf(0.68f) }
 
     val trimStartMs = trimStartSeconds.toDoubleOrNull()
         ?.takeIf { it.isFinite() && it >= 0.0 }
@@ -501,6 +505,92 @@ fun ToolDetailScreen(
                 }
             }
 
+            if (tool.operation == ToolOperation.ECHO_WAV ||
+                tool.operation == ToolOperation.REVERB_WAV
+            ) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF15152F)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF784D91))
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("✧", color = Color(0xFFFF79C6), fontSize = 22.sp)
+                            Spacer(Modifier.width(9.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    localized("Controlos de efeito", "Effect controls", isPt),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    localized("Processamento espacial em WAV PCM", "Spatial processing on PCM WAV", isPt),
+                                    color = AudioLabPalette.Muted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Text(
+                                if (tool.operation == ToolOperation.ECHO_WAV) "ECHO" else "REVERB",
+                                color = Color(0xFFFF79C6),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+
+                        if (tool.operation == ToolOperation.ECHO_WAV) {
+                            EffectSlider(
+                                label = localized("Tempo de atraso", "Delay time", isPt),
+                                value = echoDelayMs,
+                                valueText = echoDelayMs.toInt().toString() + " ms",
+                                range = 40f..1000f,
+                                steps = 47,
+                                onValueChange = { echoDelayMs = it }
+                            )
+                            EffectSlider(
+                                label = localized("Feedback / repetições", "Feedback / repeats", isPt),
+                                value = echoFeedback,
+                                valueText = String.format(Locale.US, "%.2f", echoFeedback),
+                                range = 0f..0.7f,
+                                steps = 13,
+                                onValueChange = { echoFeedback = it }
+                            )
+                        } else {
+                            EffectSlider(
+                                label = localized("Decaimento", "Decay", isPt),
+                                value = reverbDecay,
+                                valueText = String.format(Locale.US, "%.2f", reverbDecay),
+                                range = 0.1f..0.9f,
+                                steps = 15,
+                                onValueChange = { reverbDecay = it }
+                            )
+                        }
+                        EffectSlider(
+                            label = localized("Mistura wet", "Wet mix", isPt),
+                            value = effectMix,
+                            valueText = String.format(Locale.US, "%.0f%%", effectMix * 100f),
+                            range = 0f..1f,
+                            steps = 19,
+                            onValueChange = { effectMix = it }
+                        )
+                        Text(
+                            localized(
+                                "O efeito é aplicado por canal, sem misturar o canal esquerdo com o direito. O resultado é exportado como um novo WAV.",
+                                "The effect is applied per channel without mixing left and right. The result is exported as a new WAV.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+            }
+
             if (tool.operation == ToolOperation.GAIN_WAV) {
                 Spacer(Modifier.height(15.dp))
                 Card(
@@ -573,6 +663,16 @@ fun ToolDetailScreen(
                     "Linear frame-based volume fade that preserves channels. Supports 8, 16, 24 or 32-bit integer PCM WAV.",
                     isPt
                 )
+                ToolOperation.ECHO_WAV -> localized(
+                    "Eco para WAV PCM inteiro de 8, 16, 24 ou 32 bits. Atraso entre 40 e 1000 ms, feedback limitado e linha de atraso independente por canal.",
+                    "Echo for 8, 16, 24 or 32-bit integer PCM WAV. Delay from 40 to 1000 ms, bounded feedback and a separate delay line per channel.",
+                    isPt
+                )
+                ToolOperation.REVERB_WAV -> localized(
+                    "Reverberação por três linhas de atraso com feedback, cauda e mistura ajustáveis. WAV PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Three-delay feedback reverb with adjustable decay tail and wet mix. Supports 8, 16, 24 or 32-bit integer PCM WAV.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -624,6 +724,21 @@ fun ToolDetailScreen(
                                 fadeIn = tool.operation == ToolOperation.FADE_IN_WAV,
                                 fadeDurationMs = fadeDurationMs ?: return@Button
                             )
+                        ToolOperation.ECHO_WAV -> AudioWorkScheduler.enqueueWavEcho(
+                            context,
+                            uri ?: return@Button,
+                            sourceName,
+                            delayMs = echoDelayMs.toLong(),
+                            feedback = echoFeedback.toDouble(),
+                            mix = effectMix.toDouble()
+                        )
+                        ToolOperation.REVERB_WAV -> AudioWorkScheduler.enqueueWavReverb(
+                            context,
+                            uri ?: return@Button,
+                            sourceName,
+                            decay = reverbDecay.toDouble(),
+                            mix = effectMix.toDouble()
+                        )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
@@ -656,6 +771,8 @@ fun ToolDetailScreen(
                         ToolOperation.REVERSE_WAV -> localized("Inverter e exportar WAV", "Reverse and export WAV", isPt)
                         ToolOperation.FADE_IN_WAV -> localized("Aplicar entrada gradual", "Apply fade in", isPt)
                         ToolOperation.FADE_OUT_WAV -> localized("Aplicar saída gradual", "Apply fade out", isPt)
+                        ToolOperation.ECHO_WAV -> localized("Aplicar eco e exportar WAV", "Apply echo and export WAV", isPt)
+                        ToolOperation.REVERB_WAV -> localized("Aplicar reverb e exportar WAV", "Apply reverb and export WAV", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
@@ -695,6 +812,35 @@ fun ToolDetailScreen(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun EffectSlider(
+    label: String,
+    value: Float,
+    valueText: String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onValueChange: (Float) -> Unit
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(valueText, color = Color(0xFFFF9BD4), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            steps = steps
+        )
     }
 }
 
