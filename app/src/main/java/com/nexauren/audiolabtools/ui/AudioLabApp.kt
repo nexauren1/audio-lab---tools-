@@ -43,15 +43,17 @@ fun AudioLabApp() {
     fun openTool(toolId: String, uri: String? = null, name: String? = null) {
         previousDestination = destination
         selectedToolId = toolId
-        selectedFileUri = uri
-        selectedFileName = name
+        if (uri != null) {
+            selectedFileUri = uri
+            selectedFileName = name
+        }
         destination = Destination.TOOL.name
     }
 
     fun backFromTool() {
+        // Keep the last selected source so returning to this tool restores its setup.
+        // Leaving a tool must never restart or cancel its WorkManager job.
         destination = previousDestination
-        selectedFileUri = null
-        selectedFileName = null
     }
 
     BackHandler(enabled = destination == Destination.TOOL.name) {
