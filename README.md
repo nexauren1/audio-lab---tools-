@@ -20,6 +20,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 - Audio file inspection using Android media metadata.
 - WAV PCM trimming by start/end time (8/16/24/32-bit integer PCM).
 - WAV PCM splitting into 2–20 frame-aligned parts, exported as a ZIP archive.
+- Joining 2–20 WAV PCM files with matching sample rate, channels and bit depth.
 - WAV PCM normalization.
 - WAV PCM gain adjustment.
 - Persistent background work queue with real progress, cancellation and result links.
