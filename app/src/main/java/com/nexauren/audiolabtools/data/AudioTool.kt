@@ -14,6 +14,7 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
 enum class ToolOperation {
     INSPECT_AUDIO,
     TRIM_WAV,
+    SPLIT_WAV,
     NORMALIZE_WAV,
     GAIN_WAV,
     NOT_READY
@@ -41,8 +42,8 @@ object AudioToolCatalog {
             "Definir início e fim e exportar apenas o trecho escolhido.", "Set start and end points and export only the selected section.",
             "✂", ToolOperation.TRIM_WAV),
         AudioTool("split-audio", ToolCategory.EDIT, "Dividir áudio", "Split audio",
-            "Separar um ficheiro em várias partes.", "Split one file into separate parts.",
-            "⋈", ToolOperation.NOT_READY),
+            "Dividir WAV PCM em partes iguais e exportar num ZIP.", "Split PCM WAV into equal parts and export a ZIP.",
+            "⋈", ToolOperation.SPLIT_WAV),
         AudioTool("join-audio", ToolCategory.EDIT, "Unir áudios", "Join audio files",
             "Juntar vários ficheiros numa faixa.", "Combine multiple files into one track.",
             "＋", ToolOperation.NOT_READY),
