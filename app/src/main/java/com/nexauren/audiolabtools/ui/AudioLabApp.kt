@@ -42,10 +42,18 @@ fun AudioLabApp() {
 
     fun openTool(toolId: String, uri: String? = null, name: String? = null) {
         previousDestination = destination
+        val returningToSameTool = selectedToolId == toolId
         selectedToolId = toolId
-        if (uri != null) {
-            selectedFileUri = uri
-            selectedFileName = name
+        when {
+            uri != null -> {
+                selectedFileUri = uri
+                selectedFileName = name
+            }
+            !returningToSameTool -> {
+                selectedFileUri = null
+                selectedFileName = null
+            }
+            // Reopening the same tool restores its last selected source.
         }
         destination = Destination.TOOL.name
     }
