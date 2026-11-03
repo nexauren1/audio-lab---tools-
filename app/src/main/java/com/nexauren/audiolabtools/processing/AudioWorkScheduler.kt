@@ -108,6 +108,41 @@ object AudioWorkScheduler {
         return uniqueName
     }
 
+
+    fun enqueueWavSplit(
+        context: Context,
+        uri: Uri,
+        sourceName: String,
+        partCount: Int
+    ): String {
+        require(partCount in 2..20) { "Choose between 2 and 20 parts." }
+        val toolId = "split-audio"
+        val uniqueName = uniqueName(toolId, uri)
+        val request = OneTimeWorkRequestBuilder<WavProcessingWorker>()
+            .setInputData(
+                workDataOf(
+                    ProcessingContract.KEY_INPUT_URI to uri.toString(),
+                    ProcessingContract.KEY_SOURCE_NAME to sourceName,
+                    ProcessingContract.KEY_TOOL_ID to toolId,
+                    ProcessingContract.KEY_SPLIT_PARTS to partCount,
+                    ProcessingContract.KEY_NORMALIZE to false,
+                    ProcessingContract.KEY_GAIN_DB to 0.0
+                )
+            )
+            .addTag(ProcessingContract.TAG_PROCESSING)
+            .addTag(ProcessingContract.toolTag(toolId))
+            .addTag(ProcessingContract.sourceTag(uri.toString()))
+            .addTag(ProcessingContract.sourceNameTag(sourceName))
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            uniqueName,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        return uniqueName
+    }
+
     private fun uniqueName(toolId: String, uri: Uri): String {
         val bytes = MessageDigest.getInstance("SHA-256")
             .digest(uri.toString().toByteArray(Charsets.UTF_8))
