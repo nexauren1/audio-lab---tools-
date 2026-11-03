@@ -79,6 +79,7 @@ fun ToolDetailScreen(
     var trimStartSeconds by rememberSaveable(tool.id) { mutableStateOf("0") }
     var trimEndSeconds by rememberSaveable(tool.id) { mutableStateOf("10") }
     var splitPartCount by rememberSaveable(tool.id) { mutableStateOf("3") }
+    var fadeDurationSeconds by rememberSaveable(tool.id) { mutableStateOf("1.0") }
 
     val trimStartMs = trimStartSeconds.toDoubleOrNull()
         ?.takeIf { it.isFinite() && it >= 0.0 }
@@ -88,6 +89,9 @@ fun ToolDetailScreen(
         ?.times(1000.0)?.toLong()
     val trimRangeValid = trimStartMs != null && trimEndMs != null && trimEndMs > trimStartMs
     val splitParts = splitPartCount.toIntOrNull()?.takeIf { it in 2..20 }
+    val fadeDurationMs = fadeDurationSeconds.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it in 0.001..60.0 }
+        ?.times(1000.0)?.toLong()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -447,6 +451,56 @@ fun ToolDetailScreen(
                 }
             }
 
+            if (tool.operation == ToolOperation.FADE_IN_WAV ||
+                tool.operation == ToolOperation.FADE_OUT_WAV
+            ) {
+                Spacer(Modifier.height(15.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            localized("Duração da transição", "Fade duration", isPt),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = fadeDurationSeconds,
+                            onValueChange = {
+                                fadeDurationSeconds = it.filter { ch -> ch.isDigit() || ch == '.' }.take(6)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Segundos (0,001–60)", "Seconds (0.001–60)")) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AudioLabPalette.Cyan,
+                                unfocusedBorderColor = AudioLabPalette.Border,
+                                focusedLabelColor = AudioLabPalette.Cyan,
+                                unfocusedLabelColor = AudioLabPalette.Muted,
+                                cursorColor = AudioLabPalette.Cyan
+                            )
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            localized(
+                                "A transição é aplicada aos primeiros ou últimos segundos da faixa. O original fica intacto.",
+                                "The fade is applied to the first or last seconds of the track. The original remains untouched.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
             if (tool.operation == ToolOperation.GAIN_WAV) {
                 Spacer(Modifier.height(15.dp))
                 Card(
@@ -514,6 +568,11 @@ fun ToolDetailScreen(
                     "Reverses WAV PCM frame order while keeping channels and samples in each frame together. Supports 8, 16, 24 or 32-bit integer PCM.",
                     isPt
                 )
+                ToolOperation.FADE_IN_WAV, ToolOperation.FADE_OUT_WAV -> localized(
+                    "Transição linear de volume por frames, preservando os canais. Aceita WAV PCM inteiro de 8, 16, 24 ou 32 bits.",
+                    "Linear frame-based volume fade that preserves channels. Supports 8, 16, 24 or 32-bit integer PCM WAV.",
+                    isPt
+                )
                 ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
                     "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
                     "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
@@ -559,6 +618,12 @@ fun ToolDetailScreen(
                             context, uri ?: return@Button, sourceName,
                             tool.id, normalize = false, gainDb = 0.0
                         )
+                        ToolOperation.FADE_IN_WAV, ToolOperation.FADE_OUT_WAV ->
+                            AudioWorkScheduler.enqueueWavFade(
+                                context, uri ?: return@Button, sourceName,
+                                fadeIn = tool.operation == ToolOperation.FADE_IN_WAV,
+                                fadeDurationMs = fadeDurationMs ?: return@Button
+                            )
                         ToolOperation.NOT_READY -> Unit
                     }
                 },
@@ -568,7 +633,9 @@ fun ToolDetailScreen(
                     (tool.operation != ToolOperation.JOIN_WAV ||
                         sourceKeyCount(selectedUri) in 2..20) &&
                     (tool.operation != ToolOperation.TRIM_WAV || trimRangeValid) &&
-                    (tool.operation != ToolOperation.SPLIT_WAV || splitParts != null),
+                    (tool.operation != ToolOperation.SPLIT_WAV || splitParts != null) &&
+                    ((tool.operation != ToolOperation.FADE_IN_WAV &&
+                        tool.operation != ToolOperation.FADE_OUT_WAV) || fadeDurationMs != null),
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1769D2),
@@ -587,6 +654,8 @@ fun ToolDetailScreen(
                         ToolOperation.SPLIT_WAV -> localized("Dividir e exportar ZIP", "Split and export ZIP", isPt)
                         ToolOperation.JOIN_WAV -> localized("Unir e exportar WAV", "Join and export WAV", isPt)
                         ToolOperation.REVERSE_WAV -> localized("Inverter e exportar WAV", "Reverse and export WAV", isPt)
+                        ToolOperation.FADE_IN_WAV -> localized("Aplicar entrada gradual", "Apply fade in", isPt)
+                        ToolOperation.FADE_OUT_WAV -> localized("Aplicar saída gradual", "Apply fade out", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
