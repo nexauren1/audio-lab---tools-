@@ -138,6 +138,56 @@ class WavPcmProcessorTest {
         }
     }
 
+
+    @Test
+    fun joinConcatenatesSamplesInSelectedOrder() = runBlocking {
+        val folder = createTempDir(prefix = "audio-lab-test-")
+        try {
+            val first = File(folder, "first.wav")
+            val second = File(folder, "second.wav")
+            val output = File(folder, "joined.wav")
+            writePcm16Wav(first, shortArrayOf(1, 2, 3), sampleRate = 8000)
+            writePcm16Wav(second, shortArrayOf(4, 5), sampleRate = 8000)
+
+            val summary = WavPcmProcessor.join(
+                sources = listOf(first, second),
+                destination = output,
+                onProgress = {}
+            )
+
+            RandomAccessFile(output, "r").use { wav ->
+                wav.seek(44)
+                val joined = ShortArray(5) { wav.readShortLE() }
+                assertTrue(joined.contentEquals(shortArrayOf(1, 2, 3, 4, 5)))
+            }
+            assertEquals(5L, summary.frames)
+            assertEquals(8000, summary.sampleRate)
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun joinRejectsDifferentSampleRates() = runBlocking {
+        val folder = createTempDir(prefix = "audio-lab-test-")
+        try {
+            val first = File(folder, "first.wav")
+            val second = File(folder, "second.wav")
+            val output = File(folder, "joined.wav")
+            writePcm16Wav(first, shortArrayOf(1, 2), sampleRate = 8000)
+            writePcm16Wav(second, shortArrayOf(3, 4), sampleRate = 16000)
+
+            try {
+                WavPcmProcessor.join(listOf(first, second), output, onProgress = {})
+                throw AssertionError("Joining different sample rates must fail.")
+            } catch (_: IllegalArgumentException) {
+                assertTrue(!output.exists() || output.length() == 0L)
+            }
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
+
     private fun writePcm16Wav(file: File, samples: ShortArray, sampleRate: Int = 48000) {
         RandomAccessFile(file, "rw").use { wav ->
             val dataSize = samples.size * 2
