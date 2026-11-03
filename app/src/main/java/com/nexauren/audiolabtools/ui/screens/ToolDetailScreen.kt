@@ -425,7 +425,7 @@ fun ToolDetailScreen(
                     isPt
                 )
                 ToolOperation.SPLIT_WAV -> localized(
-                    "Divisão WAV PCM inteiro de 8, 16, 24 ou 32 bits. O resultado é um arquivo ZIP com os segmentos.",
+                    "Divisão WAV PCM inteiro de 8, 16, 24 ou 32 bits. O resultado é um ficheiro ZIP com os segmentos.",
                     "Split 8, 16, 24 or 32-bit integer PCM WAV. The result is a ZIP archive containing the segments.",
                     isPt
                 )
