@@ -208,6 +208,7 @@ class WavPcmProcessorTest {
             )
 
             RandomAccessFile(output, "r").use { wav ->
+                wav.seek(44L)
                 val channelFrames = ShortArray(6) { wav.readShortLE() }
                 assertTrue(channelFrames.contentEquals(shortArrayOf(3, 103, 2, 102, 1, 101)))
                 assertEquals("RIFF", readRiffHeader(output))
