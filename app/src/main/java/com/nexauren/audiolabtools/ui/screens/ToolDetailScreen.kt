@@ -61,6 +61,7 @@ fun ToolDetailScreen(
     tool: AudioTool,
     initialUri: String?,
     initialName: String?,
+    onSourceSelected: (String, String) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -93,6 +94,7 @@ fun ToolDetailScreen(
             }
             selectedUri = uri.toString()
             sourceName = queryDisplayName(context, uri)
+            onSourceSelected(selectedUri!!, sourceName)
         }
     }
 
@@ -100,12 +102,17 @@ fun ToolDetailScreen(
         ProcessingContract.toolTag(tool.id)
     )
     val workInfos by workInfosLiveData.observeAsState(initial = emptyList())
-    val workInfo = workInfos.firstOrNull {
+    // A tool screen only observes jobs for its currently selected source file.
+    // Other files may be processed independently in the background.
+    val sourceWorkInfos = workInfos.filter {
+        it.inputData.getString(ProcessingContract.KEY_INPUT_URI) == selectedUri
+    }
+    val workInfo = sourceWorkInfos.firstOrNull {
         it.state == WorkInfo.State.ENQUEUED ||
             it.state == WorkInfo.State.RUNNING ||
             it.state == WorkInfo.State.BLOCKED
-    } ?: workInfos.lastOrNull()
-    val isProcessing = workInfos.any {
+    } ?: sourceWorkInfos.lastOrNull()
+    val isProcessing = sourceWorkInfos.any {
         it.state == WorkInfo.State.ENQUEUED ||
             it.state == WorkInfo.State.RUNNING ||
             it.state == WorkInfo.State.BLOCKED
