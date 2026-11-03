@@ -175,6 +175,79 @@ object WavPcmProcessor {
         )
     }
 
+
+    /**
+     * Splits integer-PCM WAV into equal, frame-aligned parts.
+     * Audio is copied in small buffers; no full-file PCM allocation is made.
+     */
+    suspend fun splitIntoParts(
+        source: File,
+        outputFolder: File,
+        baseName: String,
+        partCount: Int,
+        onProgress: suspend (Int) -> Unit
+    ): List<File> = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(partCount in 2..20) { "Choose between 2 and 20 parts." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames >= partCount.toLong()) { "The audio is too short to create that many parts." }
+
+        outputFolder.mkdirs()
+        val safeBase = baseName.replace(Regex("[^A-Za-z0-9_-]"), "_").take(48).ifBlank { "audio" }
+        val outputs = mutableListOf<File>()
+
+        try {
+            RandomAccessFile(source, "r").use { input ->
+                for (index in 0 until partCount) {
+                    currentCoroutineContext().ensureActive()
+                    val startFrame = totalFrames * index / partCount
+                    val endFrame = totalFrames * (index + 1) / partCount
+                    val partBytes = (endFrame - startFrame) * info.blockAlign
+                    require(partBytes <= 0xFFFF_FFFFL - 37L) {
+                        "A split part is too large for standard RIFF/WAV output."
+                    }
+
+                    val partFile = File(
+                        outputFolder,
+                        safeBase + "_part_" + (index + 1).toString().padStart(2, '0') + ".wav"
+                    )
+                    RandomAccessFile(partFile, "rw").use { output ->
+                        output.setLength(0L)
+                        writeHeader(output, info.copy(dataSize = partBytes))
+                        input.seek(info.dataOffset + startFrame * info.blockAlign)
+
+                        val bytesPerBlock = max(info.blockAlign, (64 * 1024 / info.blockAlign) * info.blockAlign)
+                        val buffer = ByteArray(bytesPerBlock)
+                        var remaining = partBytes
+                        var copied = 0L
+                        while (remaining > 0L) {
+                            currentCoroutineContext().ensureActive()
+                            val count = minOf(buffer.size.toLong(), remaining).toInt()
+                            input.readFully(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                            copied += count
+                            remaining -= count
+                            val partProgress = (copied * 100L / partBytes).toInt()
+                            val overall = ((index * 100L + partProgress) / partCount).toInt()
+                            onProgress(overall.coerceIn(0, 99))
+                        }
+                        if (partBytes % 2L == 1L) output.write(0)
+                        output.fd.sync()
+                    }
+                    outputs += partFile
+                }
+            }
+            onProgress(100)
+            outputs
+        } catch (error: Exception) {
+            outputs.forEach(File::delete)
+            throw error
+        }
+    }
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
