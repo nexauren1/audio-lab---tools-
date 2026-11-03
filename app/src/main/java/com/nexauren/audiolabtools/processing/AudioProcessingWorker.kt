@@ -139,6 +139,7 @@ class WavProcessingWorker(
             toolId == "trim-audio" -> "_trimmed"
             toolId == "split-audio" -> "_parts"
             toolId == "join-audio" -> "_joined"
+            toolId == "reverse-audio" -> "_reversed"
             normalize -> "_normalized"
             else -> "_gain"
         }
@@ -189,6 +190,7 @@ class WavProcessingWorker(
                         progress < 10 -> "Preparing audio"
                         progress < 96 && toolId == "trim-audio" -> "Extracting selected audio range"
                         toolId == "join-audio" -> "Joining WAV files"
+                        toolId == "reverse-audio" -> "Reversing audio frames"
                         progress < 25 -> "Analysing audio peak"
                         else -> "Processing PCM samples"
                     }
@@ -204,6 +206,11 @@ class WavProcessingWorker(
                 )
                 toolId == "join-audio" -> WavPcmProcessor.join(
                     sources = sourceCopies,
+                    destination = outputFile,
+                    onProgress = reportProgress
+                )
+                toolId == "reverse-audio" -> WavPcmProcessor.reverse(
+                    source = sourceCopies.first(),
                     destination = outputFile,
                     onProgress = reportProgress
                 )
