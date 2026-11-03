@@ -704,6 +704,7 @@ private fun NotReadyPanel(tool: AudioTool, isPt: Boolean) {
         com.nexauren.audiolabtools.data.ToolCategory.EDIT -> Color(0xFF27A8FF)
         com.nexauren.audiolabtools.data.ToolCategory.CONVERT -> Color(0xFF23D0B5)
         com.nexauren.audiolabtools.data.ToolCategory.CLEAN -> Color(0xFFAE7BFF)
+        com.nexauren.audiolabtools.data.ToolCategory.EFFECTS -> Color(0xFFFF79C6)
         com.nexauren.audiolabtools.data.ToolCategory.ANALYZE -> Color(0xFF49C9F2)
         com.nexauren.audiolabtools.data.ToolCategory.METADATA -> Color(0xFFFFB15E)
         com.nexauren.audiolabtools.data.ToolCategory.BATCH -> Color(0xFFFF70BA)
