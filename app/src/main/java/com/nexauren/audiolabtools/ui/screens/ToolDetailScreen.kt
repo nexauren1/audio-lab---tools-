@@ -209,7 +209,7 @@ fun ToolDetailScreen(
 
         Spacer(Modifier.height(22.dp))
         if (!tool.isAvailable) {
-            NotReadyPanel(isPt)
+            NotReadyPanel(tool, isPt)
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
