@@ -15,6 +15,7 @@ enum class ToolOperation {
     INSPECT_AUDIO,
     TRIM_WAV,
     SPLIT_WAV,
+    JOIN_WAV,
     NORMALIZE_WAV,
     GAIN_WAV,
     NOT_READY
@@ -45,8 +46,8 @@ object AudioToolCatalog {
             "Dividir WAV PCM em partes iguais e exportar num ZIP.", "Split PCM WAV into equal parts and export a ZIP.",
             "⋈", ToolOperation.SPLIT_WAV),
         AudioTool("join-audio", ToolCategory.EDIT, "Unir áudios", "Join audio files",
-            "Juntar vários ficheiros numa faixa.", "Combine multiple files into one track.",
-            "＋", ToolOperation.NOT_READY),
+            "Juntar 2 a 20 ficheiros WAV PCM compatíveis.", "Join 2–20 compatible PCM WAV files.",
+            "＋", ToolOperation.JOIN_WAV),
         AudioTool("convert-audio", ToolCategory.CONVERT, "Converter formato", "Convert format",
             "Converter entre formatos de áudio.", "Convert between supported audio formats.",
             "⇄", ToolOperation.NOT_READY),
