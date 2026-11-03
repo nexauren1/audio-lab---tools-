@@ -49,7 +49,7 @@ Other tools are visible in the catalogue but clearly marked as planned until the
 
 Open the repository in a recent Android Studio version with JDK 17 and Android SDK 36 installed. Let Gradle sync, then run the `app` configuration.
 
-The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 8.13`.
+The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 9.3.1`.
 
 ## Current stage
 
