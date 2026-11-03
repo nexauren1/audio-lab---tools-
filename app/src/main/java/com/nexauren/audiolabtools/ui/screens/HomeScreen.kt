@@ -605,6 +605,7 @@ private fun categoryTint(category: ToolCategory): Color = when (category) {
     ToolCategory.EDIT -> Color(0xFF27A8FF)
     ToolCategory.CONVERT -> Color(0xFF23D0B5)
     ToolCategory.CLEAN -> Color(0xFFAE7BFF)
+    ToolCategory.EFFECTS -> Color(0xFFFF79C6)
     ToolCategory.ANALYZE -> Color(0xFF49C9F2)
     ToolCategory.METADATA -> Color(0xFFFFB15E)
     ToolCategory.BATCH -> Color(0xFFFF70BA)
