@@ -19,6 +19,7 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 
 - Audio file inspection using Android media metadata.
 - WAV PCM trimming by start/end time (8/16/24/32-bit integer PCM).
+- WAV PCM splitting into 2–20 frame-aligned parts, exported as a ZIP archive.
 - WAV PCM normalization.
 - WAV PCM gain adjustment.
 - Persistent background work queue with real progress, cancellation and result links.
@@ -26,6 +27,8 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 - Android Storage Access Framework import; no broad storage permission is required to choose a file.
 
 Other tools are visible in the catalogue but clearly marked as planned until their processing engines are implemented.
+
+The current trim, split, normalize and gain processors accept uncompressed integer-PCM WAV at 8, 16, 24 or 32 bits. They do not silently convert unsupported encodings.
 
 ## Processing rules
 
