@@ -18,9 +18,10 @@ Audio Lab is being built as a premium, offline-first toolbox for managing and pr
 ### Available in this first foundation
 
 - Audio file inspection using Android media metadata.
+- WAV PCM trimming by start/end time (8/16/24/32-bit integer PCM).
 - WAV PCM normalization.
 - WAV PCM gain adjustment.
-- Persistent background work queue.
+- Persistent background work queue with real progress, cancellation and result links.
 - Portuguese and English interface, selected from the device language.
 - Android Storage Access Framework import; no broad storage permission is required to choose a file.
 
