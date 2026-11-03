@@ -11,6 +11,7 @@ object ProcessingContract {
     const val KEY_START_MS = "start_ms"
     const val KEY_END_MS = "end_ms"
     const val KEY_SPLIT_PARTS = "split_parts"
+    const val KEY_FADE_MS = "fade_ms"
     const val KEY_NORMALIZE = "normalize"
     const val KEY_PROGRESS = "progress"
     const val KEY_STAGE = "stage"
