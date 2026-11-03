@@ -116,6 +116,7 @@ class WavProcessingWorker(
         val gainDb = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 0.0)
         val startMs = inputData.getLong(ProcessingContract.KEY_START_MS, 0L)
         val endMs = inputData.getLong(ProcessingContract.KEY_END_MS, 0L)
+        val fadeDurationMs = inputData.getLong(ProcessingContract.KEY_FADE_MS, 1000L)
         val splitParts = inputData.getInt(ProcessingContract.KEY_SPLIT_PARTS, 2)
         val isArchive = toolId == "split-audio"
         val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME) ?: "audio.wav"
@@ -140,6 +141,8 @@ class WavProcessingWorker(
             toolId == "split-audio" -> "_parts"
             toolId == "join-audio" -> "_joined"
             toolId == "reverse-audio" -> "_reversed"
+            toolId == "fade-in" -> "_fade_in"
+            toolId == "fade-out" -> "_fade_out"
             normalize -> "_normalized"
             else -> "_gain"
         }
@@ -191,6 +194,8 @@ class WavProcessingWorker(
                         progress < 96 && toolId == "trim-audio" -> "Extracting selected audio range"
                         toolId == "join-audio" -> "Joining WAV files"
                         toolId == "reverse-audio" -> "Reversing audio frames"
+                        toolId == "fade-in" -> "Applying fade in"
+                        toolId == "fade-out" -> "Applying fade out"
                         progress < 25 -> "Analysing audio peak"
                         else -> "Processing PCM samples"
                     }
@@ -212,6 +217,13 @@ class WavProcessingWorker(
                 toolId == "reverse-audio" -> WavPcmProcessor.reverse(
                     source = sourceCopies.first(),
                     destination = outputFile,
+                    onProgress = reportProgress
+                )
+                toolId == "fade-in" || toolId == "fade-out" -> WavPcmProcessor.fade(
+                    source = sourceCopies.first(),
+                    destination = outputFile,
+                    fadeIn = toolId == "fade-in",
+                    fadeDurationMs = fadeDurationMs,
                     onProgress = reportProgress
                 )
                 isArchive -> {
