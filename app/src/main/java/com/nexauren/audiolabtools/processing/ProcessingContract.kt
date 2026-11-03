@@ -26,4 +26,20 @@ object ProcessingContract {
     const val KEY_ERROR = "error"
 
     fun toolTag(toolId: String) = "audio_lab_tool_$toolId"
+
+    fun sourceTag(uri: String): String {
+        val key = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(uri.toByteArray(Charsets.UTF_8))
+            .take(10)
+            .joinToString("") { "%02x".format(it) }
+        return "audio_lab_source_$key"
+    }
+
+    fun sourceNameTag(name: String): String {
+        val safeName = name.substringBeforeLast('.', name)
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(60)
+            .ifBlank { "audio" }
+        return "audio_lab_source_name_$safeName"
+    }
 }
