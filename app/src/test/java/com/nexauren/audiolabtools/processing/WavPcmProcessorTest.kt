@@ -7,11 +7,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.io.path.createTempDirectory
 
 class WavPcmProcessorTest {
     @Test
     fun normalize16BitPcmKeepsValidWavAndTargetsPeak() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val output = File(folder, "normalized.wav")
@@ -47,7 +48,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun gainDbIsAppliedToPcmSamples() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val output = File(folder, "gain.wav")
@@ -75,7 +76,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun trimExportsOnlyRequestedFrames() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val output = File(folder, "trimmed.wav")
@@ -107,7 +108,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun splitWavCreatesFrameAlignedEqualParts() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val outputFolder = File(folder, "parts")
@@ -141,7 +142,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun joinConcatenatesSamplesInSelectedOrder() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val first = File(folder, "first.wav")
             val second = File(folder, "second.wav")
@@ -169,7 +170,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun joinRejectsDifferentSampleRates() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = createTempDirectory(prefix = "audio-lab-test-").toFile()
         try {
             val first = File(folder, "first.wav")
             val second = File(folder, "second.wav")
