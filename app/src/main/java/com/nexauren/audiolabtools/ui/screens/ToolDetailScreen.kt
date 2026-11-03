@@ -699,33 +699,109 @@ fun ToolDetailScreen(
 }
 
 @Composable
-private fun NotReadyPanel(isPt: Boolean) {
+private fun NotReadyPanel(tool: AudioTool, isPt: Boolean) {
+    val accent = when (tool.category) {
+        com.nexauren.audiolabtools.data.ToolCategory.EDIT -> Color(0xFF27A8FF)
+        com.nexauren.audiolabtools.data.ToolCategory.CONVERT -> Color(0xFF23D0B5)
+        com.nexauren.audiolabtools.data.ToolCategory.CLEAN -> Color(0xFFAE7BFF)
+        com.nexauren.audiolabtools.data.ToolCategory.ANALYZE -> Color(0xFF49C9F2)
+        com.nexauren.audiolabtools.data.ToolCategory.METADATA -> Color(0xFFFFB15E)
+        com.nexauren.audiolabtools.data.ToolCategory.BATCH -> Color(0xFFFF70BA)
+    }
+    val fileFlow = when (tool.id) {
+        "extract-video-audio" -> Pair(localized("Vídeo local", "Local video", isPt), localized("Novo ficheiro de áudio", "New audio file", isPt))
+        "waveform-viewer", "spectrogram", "frequency-analyzer", "loudness-meter", "clipping-detector", "silence-detector" ->
+            Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Relatório / visualização", "Report / visualization", isPt))
+        "edit-metadata", "cover-art", "metadata-cleaner" ->
+            Pair(localized("Ficheiro com etiquetas", "Tagged audio file", isPt), localized("Cópia com metadados", "Copy with metadata", isPt))
+        "batch-convert", "batch-normalize", "batch-rename", "batch-export" ->
+            Pair(localized("Vários ficheiros", "Multiple files", isPt), localized("Coleção de resultados", "Output collection", isPt))
+        "remove-silence", "noise-reduction", "audio-compressor", "peak-limiter" ->
+            Pair(localized("Áudio de origem", "Source audio", isPt), localized("Áudio otimizado", "Optimized audio", isPt))
+        "convert-audio", "mp3-to-wav", "wav-to-mp3", "flac-converter", "sample-rate", "bit-depth", "stereo-mono" ->
+            Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Novo formato / resolução", "New format / resolution", isPt))
+        else -> Pair(localized("Ficheiro de áudio", "Audio file", isPt), localized("Novo ficheiro processado", "New processed file", isPt))
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E192B)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.55f))
     ) {
-        Column(Modifier.padding(18.dp)) {
-            Text("◌", color = AudioLabPalette.Cyan, fontSize = 33.sp)
-            Spacer(Modifier.height(10.dp))
-            Text(
-                localized("Motor em desenvolvimento", "Processing engine in development", isPt),
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(
-                localized(
-                    "Esta ferramenta já faz parte da organização do Audio Lab, mas ainda não executa operações. Será ativada quando o motor e os testes estiverem prontos.",
-                    "This tool is already part of Audio Lab's structure, but it does not run operations yet. It will be enabled when its engine and tests are ready.",
-                    isPt
-                ),
-                color = AudioLabPalette.Muted,
-                fontSize = 13.sp
-            )
+        Column(Modifier.padding(17.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(49.dp).clip(RoundedCornerShape(15.dp)).background(accent.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(tool.symbol, color = accent, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(localized("ESPECIFICAÇÃO DA FERRAMENTA", "TOOL SPECIFICATION", isPt),
+                        color = accent, fontSize = 8.sp, letterSpacing = 1.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(tool.title(isPt), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(13.dp))
+            Text(tool.description(isPt), color = Color(0xFFC0CDE1), fontSize = 12.sp, lineHeight = 17.sp)
+            Spacer(Modifier.height(17.dp))
+            Text(localized("FLUXO PREVISTO", "PLANNED WORKFLOW", isPt),
+                color = AudioLabPalette.Muted, fontSize = 9.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlannedStep("01", localized("Selecionar", "Select", isPt), Modifier.weight(1f))
+                PlannedStep("02", localized("Configurar", "Configure", isPt), Modifier.weight(1f))
+                PlannedStep("03", localized("Processar", "Process", isPt), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(15.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                PlannedFileCard(localized("ENTRADA", "INPUT", isPt), fileFlow.first, Modifier.weight(1f), accent)
+                PlannedFileCard(localized("RESULTADO", "OUTPUT", isPt), fileFlow.second, Modifier.weight(1f), accent)
+            }
+            Spacer(Modifier.height(15.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                    .background(Color(0xFF2A2030)).padding(11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("◌", color = Color(0xFFFFC477), fontSize = 19.sp)
+                Spacer(Modifier.width(9.dp))
+                Column {
+                    Text(localized("Motor em desenvolvimento", "Engine in development", isPt),
+                        color = Color(0xFFFFD39B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        localized(
+                            "Esta página descreve a ferramenta. A execução só será ativada depois de o motor e os testes estarem prontos.",
+                            "This page describes the tool. Processing will only be enabled after its engine and tests are ready.",
+                            isPt
+                        ),
+                        color = AudioLabPalette.Muted,
+                        fontSize = 9.sp
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PlannedStep(number: String, label: String, modifier: Modifier) {
+    Column(modifier.clip(RoundedCornerShape(13.dp)).background(Color(0xFF17243A)).padding(10.dp)) {
+        Text(number, color = AudioLabPalette.Cyan, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun PlannedFileCard(title: String, value: String, modifier: Modifier, accent: Color) {
+    Column(modifier.clip(RoundedCornerShape(13.dp)).background(Color(0xFF111F33)).padding(11.dp)) {
+        Text(title, color = accent, fontSize = 8.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(5.dp))
+        Text(value, color = Color.White, fontSize = 10.sp, lineHeight = 13.sp)
     }
 }
 
