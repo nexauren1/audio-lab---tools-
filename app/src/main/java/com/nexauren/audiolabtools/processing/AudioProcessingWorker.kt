@@ -102,6 +102,9 @@ class WavProcessingWorker(
 
         val normalize = inputData.getBoolean(ProcessingContract.KEY_NORMALIZE, false)
         val gainDb = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 0.0)
+        val toolId = inputData.getString(ProcessingContract.KEY_TOOL_ID).orEmpty()
+        val startMs = inputData.getLong(ProcessingContract.KEY_START_MS, 0L)
+        val endMs = inputData.getLong(ProcessingContract.KEY_END_MS, 0L)
         val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME) ?: "audio.wav"
         val safeBase = sourceName.substringBeforeLast('.', sourceName)
             .replace(Regex("[^A-Za-z0-9_-]"), "_")
@@ -118,7 +121,11 @@ class WavProcessingWorker(
         exportFolder.mkdirs()
 
         val sourceCopy = File.createTempFile("source_", ".wav", cacheFolder)
-        val suffix = if (normalize) "_normalized" else "_gain"
+        val suffix = when {
+            toolId == "trim-audio" -> "_trimmed"
+            normalize -> "_normalized"
+            else -> "_gain"
+        }
         val outputFile = File(exportFolder, safeBase + suffix + "_" + System.currentTimeMillis() + ".wav")
 
         return try {
@@ -149,16 +156,33 @@ class WavProcessingWorker(
                 ProcessingContract.KEY_STAGE to "Checking WAV format"
             ))
 
-            val summary = WavPcmProcessor.process(
-                source = sourceCopy,
-                destination = outputFile,
-                normalize = normalize,
-                gainDb = gainDb
-            ) { progress ->
+            val reportProgress: suspend (Int) -> Unit = { progress ->
                 setProgress(workDataOf(
                     ProcessingContract.KEY_PROGRESS to progress,
-                    ProcessingContract.KEY_STAGE to if (progress < 25) "Analysing audio peak" else "Processing PCM samples"
+                    ProcessingContract.KEY_STAGE to when {
+                        progress < 10 -> "Preparing audio"
+                        progress < 96 && toolId == "trim-audio" -> "Extracting selected audio range"
+                        progress < 25 -> "Analysing audio peak"
+                        else -> "Processing PCM samples"
+                    }
                 ))
+            }
+            val summary = if (toolId == "trim-audio") {
+                WavPcmProcessor.trim(
+                    source = sourceCopy,
+                    destination = outputFile,
+                    startMs = startMs,
+                    endMs = endMs,
+                    onProgress = reportProgress
+                )
+            } else {
+                WavPcmProcessor.process(
+                    source = sourceCopy,
+                    destination = outputFile,
+                    normalize = normalize,
+                    gainDb = gainDb,
+                    onProgress = reportProgress
+                )
             }
 
             setProgress(workDataOf(
