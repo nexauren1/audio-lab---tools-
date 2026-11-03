@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-files-path name="audio_exports" path="Music/AudioLab/" />
+    <external-files-path name="audio_archives" path="Download/AudioLab/" />
     <cache-path name="audio_cache" path="audio/" />
 </paths>
