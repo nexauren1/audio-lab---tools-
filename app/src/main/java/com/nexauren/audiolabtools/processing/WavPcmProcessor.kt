@@ -394,6 +394,94 @@ object WavPcmProcessor {
         )
     }
 
+    /**
+     * Applies a linear fade to the beginning or end of a PCM WAV file.
+     * Gain is applied per complete audio frame, preserving channel alignment.
+     */
+    suspend fun fade(
+        source: File,
+        destination: File,
+        fadeIn: Boolean,
+        fadeDurationMs: Long,
+        onProgress: suspend (Int) -> Unit
+    ): WavProcessSummary = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() > 44L) { "The source file is not a valid WAV file." }
+        require(fadeDurationMs in 1L..60_000L) { "Fade duration must be between 1 ms and 60 seconds." }
+
+        val info = readInfo(source)
+        require(info.dataSize % info.blockAlign == 0L) { "The WAV data chunk is incomplete." }
+        require(info.dataSize <= 0xFFFF_FFFFL - 37L) {
+            "This WAV file is too large for standard RIFF output."
+        }
+
+        val totalFrames = info.dataSize / info.blockAlign
+        require(totalFrames > 0L) { "The selected WAV file contains no audio frames." }
+        val fadeFrames = (fadeDurationMs * info.sampleRate / 1000L)
+            .coerceIn(1L, totalFrames)
+        val bytesPerSample = info.bitsPerSample / 8
+
+        destination.parentFile?.mkdirs()
+        RandomAccessFile(source, "r").use { input ->
+            RandomAccessFile(destination, "rw").use { output ->
+                output.setLength(0L)
+                writeHeader(output, info)
+                input.seek(info.dataOffset)
+
+                val framesPerBlock = max(1, 64 * 1024 / info.blockAlign)
+                val buffer = ByteArray(framesPerBlock * info.blockAlign)
+                var processedFrames = 0L
+                var lastProgress = -1
+
+                while (processedFrames < totalFrames) {
+                    currentCoroutineContext().ensureActive()
+                    val countFrames = minOf(framesPerBlock.toLong(), totalFrames - processedFrames).toInt()
+                    val byteCount = countFrames * info.blockAlign
+                    input.readFully(buffer, 0, byteCount)
+
+                    for (frameInBlock in 0 until countFrames) {
+                        val frameIndex = processedFrames + frameInBlock
+                        val framesFromEnd = totalFrames - frameIndex
+                        val gain = if (fadeIn) {
+                            if (frameIndex >= fadeFrames) 1.0
+                            else if (fadeFrames <= 1L) 1.0
+                            else frameIndex.toDouble() / (fadeFrames - 1L).toDouble()
+                        } else {
+                            if (framesFromEnd > fadeFrames) 1.0
+                            else if (fadeFrames <= 1L) 0.0
+                            else (framesFromEnd - 1L).coerceAtLeast(0L).toDouble() /
+                                (fadeFrames - 1L).toDouble()
+                        }
+
+                        for (channel in 0 until info.channels) {
+                            val sampleOffset = frameInBlock * info.blockAlign + channel * bytesPerSample
+                            applyGain(buffer, sampleOffset, info.bitsPerSample, gain)
+                        }
+                    }
+
+                    output.write(buffer, 0, byteCount)
+                    processedFrames += countFrames
+                    val progress = (processedFrames * 100L / totalFrames).toInt().coerceAtMost(99)
+                    if (progress != lastProgress) {
+                        onProgress(progress)
+                        lastProgress = progress
+                    }
+                }
+
+                if (info.dataSize % 2L == 1L) output.write(0)
+                output.fd.sync()
+            }
+        }
+
+        onProgress(100)
+        WavProcessSummary(
+            sampleRate = info.sampleRate,
+            channels = info.channels,
+            bitsPerSample = info.bitsPerSample,
+            frames = totalFrames,
+            appliedGain = 1.0
+        )
+    }
+
     private suspend fun scanPeak(
         source: File,
         info: WavInfo,
