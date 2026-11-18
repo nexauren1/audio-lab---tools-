@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +18,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -98,6 +102,7 @@ fun ToolDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp)
             .padding(top = 14.dp, bottom = 24.dp)
     ) {
@@ -149,15 +154,17 @@ fun ToolDetailScreen(
         Spacer(Modifier.height(12.dp))
         Text(tool.description(isPt), color = AudioLabPalette.Muted, fontSize = 13.sp)
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(17.dp))
+        AudioToolBanner(tool = tool, isPt = isPt)
+        Spacer(Modifier.height(19.dp))
         if (!tool.isAvailable) {
             NotReadyPanel(isPt)
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = AudioLabPalette.Surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF11192C)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF303B61))
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
@@ -355,6 +362,87 @@ fun ToolDetailScreen(
 }
 
 @Composable
+private fun AudioToolBanner(tool: AudioTool, isPt: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(21.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10172B)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF343064))
+    ) {
+        Column(Modifier.padding(15.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(51.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(AudioLabPalette.Violet, AudioLabPalette.Blue, AudioLabPalette.Cyan)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(tool.symbol, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        localized("ESPAÇO DE TRABALHO", "TOOL WORKSPACE", isPt),
+                        color = AudioLabPalette.Muted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.1.sp
+                    )
+                    Text(
+                        tool.title(isPt),
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (tool.isAvailable) Color(0xFF103A3B) else Color(0xFF28223F))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        if (tool.isAvailable) localized("ATIVA", "READY", isPt)
+                        else localized("PLANEADA", "PLANNED", isPt),
+                        color = if (tool.isAvailable) AudioLabPalette.Teal else Color(0xFFB9A7F5),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+            Spacer(Modifier.height(13.dp))
+            Canvas(modifier = Modifier.fillMaxWidth().height(37.dp)) {
+                val bars = listOf(0.22f, 0.42f, 0.67f, 0.36f, 0.82f, 0.54f, 0.29f, 0.73f, 0.95f, 0.48f, 0.31f, 0.65f, 0.86f, 0.44f, 0.72f, 0.28f, 0.58f, 0.91f, 0.38f, 0.63f, 0.82f, 0.33f, 0.57f, 0.76f, 0.4f, 0.68f, 0.29f, 0.52f, 0.87f, 0.45f, 0.71f)
+                val gap = size.width / bars.size
+                bars.forEachIndexed { index, amount ->
+                    val barHeight = size.height * amount
+                    drawRoundRect(
+                        color = if (index % 3 == 0) AudioLabPalette.Violet else AudioLabPalette.Cyan,
+                        topLeft = Offset(index * gap + 1.dp.toPx(), (size.height - barHeight) / 2f),
+                        size = Size(3.dp.toPx(), barHeight),
+                        cornerRadius = CornerRadius(3.dp.toPx())
+                    )
+                }
+            }
+            Text(
+                localized(
+                    "Interface de controlo • processamento local",
+                    "Control workspace • local processing",
+                    isPt
+                ),
+                color = AudioLabPalette.Muted,
+                fontSize = 9.sp
+            )
+        }
+    }
+}
+
+@Composable
 private fun NotReadyPanel(isPt: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -445,18 +533,40 @@ private fun JobStatusPanel(
                 )
             }
             Spacer(Modifier.height(12.dp))
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(7.dp)),
-                color = AudioLabPalette.Cyan,
-                trackColor = Color(0xFF26334B)
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(
-                stage ?: (progress.toString() + "%"),
-                color = AudioLabPalette.Muted,
-                fontSize = 11.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stage ?: localized("A processar o ficheiro", "Processing audio file", isPt),
+                        color = Color(0xFFD6E1F5),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        localized("A tarefa continua em segundo plano.", "This job can continue in the background.", isPt),
+                        color = AudioLabPalette.Muted,
+                        fontSize = 10.sp
+                    )
+                }
+                Box(modifier = Modifier.size(76.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = AudioLabPalette.Violet,
+                        trackColor = Color(0xFF29334A),
+                        strokeWidth = 7.dp
+                    )
+                    Text(
+                        progress.toString() + "%",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
+                    )
+                }
+            }
             if (info.state == WorkInfo.State.ENQUEUED ||
                 info.state == WorkInfo.State.RUNNING ||
                 info.state == WorkInfo.State.BLOCKED
