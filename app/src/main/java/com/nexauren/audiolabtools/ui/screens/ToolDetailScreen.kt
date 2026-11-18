@@ -75,6 +75,8 @@ fun ToolDetailScreen(
 
     var selectedUri by rememberSaveable(tool.id, initialUri) { mutableStateOf(initialUri) }
     var sourceName by rememberSaveable(tool.id, initialName) { mutableStateOf(initialName.orEmpty()) }
+    var selectedJoinUris by rememberSaveable(tool.id) { mutableStateOf(emptyList<String>()) }
+    var selectedJoinNames by rememberSaveable(tool.id) { mutableStateOf(emptyList<String>()) }
     var gainDb by rememberSaveable(tool.id) { mutableStateOf(3f) }
     var outputFormat by rememberSaveable(tool.id) {
         mutableStateOf(
@@ -105,6 +107,27 @@ fun ToolDetailScreen(
             selectedUri = uri.toString()
             sourceName = queryDisplayName(context, uri)
         }
+    }
+
+    val multiplePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { selected: List<Uri> ->
+        val limited = selected.take(8)
+        limited.forEach { uri ->
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+                // Some providers do not offer persistable grants; the current URI can still be used.
+            }
+        }
+        selectedJoinUris = limited.map(Uri::toString)
+        selectedJoinNames = limited.map { queryDisplayName(context, it) }
+        selectedUri = limited.firstOrNull()?.toString()
+        sourceName = if (limited.isEmpty()) "" else
+            limited.size.toString() + localized(" ficheiros selecionados", " files selected", isPt)
     }
 
     val workInfosLiveData = workManager.getWorkInfosByTagLiveData(
@@ -199,8 +222,9 @@ fun ToolDetailScreen(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         localized(
-                            "Escolhe um ficheiro do dispositivo. O original nunca será alterado.",
-                            "Choose a file from your device. The original will never be changed.",
+                            if (tool.operation == ToolOperation.FFMPEG_JOIN)
+                                localized("Seleciona entre 2 e 8 ficheiros. A ordem da seleção será mantida.", "Select 2 to 8 files. The selection order will be preserved.", isPt)
+                            else localized("Escolhe um ficheiro do dispositivo. O original nunca será alterado.", "Choose a file from your device. The original will never be changed.", isPt),
                             isPt
                         ),
                         color = AudioLabPalette.Muted,
@@ -208,14 +232,24 @@ fun ToolDetailScreen(
                     )
                     Spacer(Modifier.height(14.dp))
                     Button(
-                        onClick = { picker.launch(arrayOf("audio/*")) },
+                        onClick = {
+                            if (tool.operation == ToolOperation.FFMPEG_JOIN) {
+                                multiplePicker.launch(arrayOf("audio/*"))
+                            } else {
+                                picker.launch(arrayOf("audio/*"))
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF172A47),
                             contentColor = AudioLabPalette.Cyan
                         )
                     ) {
-                        Text("＋  " + localized("Selecionar áudio", "Choose audio", isPt))
+                        Text(
+                            "＋  " + if (tool.operation == ToolOperation.FFMPEG_JOIN)
+                                localized("Selecionar vários áudios", "Choose multiple audio files", isPt)
+                            else localized("Selecionar áudio", "Choose audio", isPt)
+                        )
                     }
 
                     if (selectedUri != null) {
@@ -247,7 +281,23 @@ fun ToolDetailScreen(
                             }
                             TextButtonLike(
                                 text = localized("Trocar", "Change", isPt),
-                                onClick = { picker.launch(arrayOf("audio/*")) }
+                                onClick = {
+                                    if (tool.operation == ToolOperation.FFMPEG_JOIN) {
+                                        multiplePicker.launch(arrayOf("audio/*"))
+                                    } else {
+                                        picker.launch(arrayOf("audio/*"))
+                                    }
+                                }
+                            )
+                        }
+                        if (tool.operation == ToolOperation.FFMPEG_JOIN && selectedJoinNames.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                selectedJoinNames.joinToString(separator = "\\n"),
+                                color = AudioLabPalette.Muted,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                maxLines = 8
                             )
                         }
                     }
@@ -430,7 +480,8 @@ fun ToolDetailScreen(
                 ToolOperation.FFMPEG_SPEED,
                 ToolOperation.FFMPEG_PITCH,
                 ToolOperation.FFMPEG_METADATA,
-                ToolOperation.FFMPEG_ANALYZE -> if (ffmpegSupported) {
+                ToolOperation.FFMPEG_ANALYZE,
+                ToolOperation.FFMPEG_JOIN -> if (ffmpegSupported) {
                     localized(
                         "Motor local multiformato: MP3, WAV, FLAC, AAC, M4A, OGG e OPUS. O ficheiro original não é substituído.",
                         "Local multiformat engine: MP3, WAV, FLAC, AAC, M4A, OGG and OPUS. The source file is never overwritten.",
@@ -443,7 +494,7 @@ fun ToolDetailScreen(
                         isPt
                     )
                 }
-                ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> ""
+                ToolOperation.NOT_READY -> ""
             }
             InfoLine(text = supported)
 
@@ -490,10 +541,17 @@ fun ToolDetailScreen(
                                 )
                             }
                         }
-                        ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> Unit
+                        ToolOperation.FFMPEG_JOIN -> {
+                            val files = selectedJoinUris.zip(selectedJoinNames).map { (value, name) ->
+                                Uri.parse(value) to name
+                            }
+                            AudioWorkScheduler.enqueueFfmpegJoin(context, files, outputFormat)
+                        }
+                        ToolOperation.NOT_READY -> Unit
                     }
                 },
-                enabled = selectedUri != null && !isProcessing &&
+                enabled = (if (tool.operation == ToolOperation.FFMPEG_JOIN)
+                    selectedJoinUris.size in 2..8 else selectedUri != null) && !isProcessing &&
                     (tool.operation == ToolOperation.INSPECT_AUDIO ||
                         ffmpegSupported ||
                         (sourceName.endsWith(".wav", ignoreCase = true) &&
@@ -523,7 +581,8 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_PITCH -> localized("Aplicar tonalidade", "Apply pitch", isPt)
                         ToolOperation.FFMPEG_METADATA -> localized("Guardar metadados", "Save metadata", isPt)
                         ToolOperation.FFMPEG_ANALYZE -> localized("Analisar frequências", "Analyse frequencies", isPt)
-                        ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> ""
+                        ToolOperation.FFMPEG_JOIN -> localized("Unir ficheiros", "Join audio files", isPt)
+                        ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
                 )
@@ -537,7 +596,8 @@ fun ToolDetailScreen(
                     ToolOperation.FFMPEG_SPEED,
                     ToolOperation.FFMPEG_PITCH,
                     ToolOperation.FFMPEG_METADATA,
-                    ToolOperation.FFMPEG_ANALYZE
+                    ToolOperation.FFMPEG_ANALYZE,
+                    ToolOperation.FFMPEG_JOIN
                 )
             ) {
                 Spacer(Modifier.height(6.dp))
