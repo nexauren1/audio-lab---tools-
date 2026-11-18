@@ -350,6 +350,22 @@ class FfmpegAudioWorker(
                 "-f", "null", "-"
             )
         )
+        val spectral = try {
+            FfmpegAudioEngine.execute(
+                listOf(
+                    "-hide_banner", "-nostats", "-t", "30", "-i", source.absolutePath,
+                    "-map", "0:a:0",
+                    "-af", "aspectralstats=measure=centroid+spread+entropy+flatness+rolloff:win_size=2048,ametadata=mode=print:file=-",
+                    "-f", "null", "-"
+                )
+            )
+        } catch (_: Exception) {
+            ""
+        }
+        val centroid = averageSpectralMetric(spectral, "centroid")
+        val rolloff = averageSpectralMetric(spectral, "rolloff")
+        val flatness = averageSpectralMetric(spectral, "flatness")
+
         val summary = buildString {
             append("Format: ").append(formatName)
             append("\nCodec: ").append(codec)
@@ -364,8 +380,24 @@ class FfmpegAudioWorker(
                 .find(stats)?.groupValues?.getOrNull(1)
             if (peak != null) append("\nPeak level: ").append(peak).append(" dB")
             if (rms != null) append("\nRMS level: ").append(rms).append(" dB")
+            if (centroid != null) append("\nSpectral centroid: ").append(String.format(Locale.US, "%.1f Hz", centroid))
+            if (rolloff != null) append("\nSpectral rolloff: ").append(String.format(Locale.US, "%.1f Hz", rolloff))
+            if (flatness != null) append("\nSpectral flatness: ").append(String.format(Locale.US, "%.4f", flatness))
         }
         return summary
+    }
+
+    private fun averageSpectralMetric(output: String, metric: String): Double? {
+        val regex = Regex(
+            "lavfi\\.aspectralstats\\.\\d+\\." + Regex.escape(metric) + "=([0-9.eE+-]+)",
+            RegexOption.IGNORE_CASE
+        )
+        val values = regex.findAll(output)
+            .mapNotNull { it.groupValues.getOrNull(1)?.toDoubleOrNull() }
+            .filter { it.isFinite() }
+            .take(2000)
+            .toList()
+        return values.takeIf { it.isNotEmpty() }?.average()
     }
 
     private fun codecOptions(format: String, bitrate: String): List<String> = when (format) {
