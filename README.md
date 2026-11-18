@@ -1,46 +1,67 @@
 # Audio Lab – Tools
 
-A native Android audio toolbox focused on practical file operations — not singing, vocal recording, or voice effects.
+A native Android audio toolbox for editing, converting, cleaning and analysing audio files. It is not a voice recorder, singing-effects app or vocal studio.
 
 ## Product direction
 
-Audio Lab is being built as a premium, offline-first toolbox for managing and processing audio files. The interface is inspired by the approved dark, neon-blue and violet concept.
+Audio Lab is a premium, offline-first toolbox. Its interface uses a dark workspace with violet and cyan accents, individual tool screens and an explicit background-processing queue.
 
-### Tool groups
+## Supported audio formats
 
-- **Edit:** trim, split, join and batch operations.
-- **Convert:** audio format and sample-rate conversion.
-- **Clean:** normalization, gain adjustment and silence removal.
-- **Analyze:** technical audio inspection and audio properties.
-- **Metadata:** inspect and manage file tags.
-- **Batch:** apply supported operations to several files.
+The import flow uses Android's Storage Access Framework and the `audio/*` MIME filter. The advanced engine is configured for:
 
-### Available in this first foundation
+- MP3
+- WAV
+- FLAC
+- AAC
+- M4A
+- OGG
+- OPUS
 
-- Audio file inspection using Android media metadata.
-- WAV PCM normalization.
-- WAV PCM gain adjustment.
-- Persistent background work queue.
-- Portuguese and English interface, selected from the device language.
-- Android Storage Access Framework import; no broad storage permission is required to choose a file.
+Actual decoding and encoding still depends on the codecs included in the selected FFmpeg audio build. Files are processed locally; no audio is uploaded to a server.
 
-Other tools are visible in the catalogue but clearly marked as planned until their processing engines are implemented.
+## Implemented operations
+
+The current codebase includes these processing paths:
+
+- **Inspect audio:** FFprobe-based format, codec, duration, sample rate, channels, bit depth, size and bitrate details on supported 64-bit devices, with an Android MediaMetadataRetriever fallback.
+- **Convert format:** MP3, WAV, FLAC, AAC, M4A, OGG and OPUS output choices.
+- **Compress audio:** AAC/M4A output with a user-selected bitrate.
+- **Trim audio:** select start and duration and save a new output file.
+- **Join audio:** select 2–8 files; inputs are resampled to a common stereo format before concatenation.
+- **Normalize volume:** loudness normalization for supported input formats.
+- **Gain:** increase or reduce volume with a bounded dB setting.
+- **Noise reduction:** FFmpeg frequency-domain denoising filter.
+- **Speed:** change playback speed while preserving pitch.
+- **Pitch:** adjust pitch by semitones while compensating duration.
+- **Metadata:** write title and artist tags when supported by the output container.
+- **Audio analysis:** codec and file inspection, peak/RMS levels and spectral metrics such as centroid, rolloff and flatness. Spectral metrics are sampled from the first 30 seconds.
+
+The following remain planned and are not presented as ready: split into many files, sample-rate-only conversion, batch processing, advanced metadata fields and an interactive spectrum/spectrogram visualiser.
+
+## Device compatibility
+
+The maintained FFmpeg audio package currently used by the app is built for `arm64-v8a` and `x86_64`. Its advanced operations are therefore enabled only on supported 64-bit devices. The existing streaming WAV PCM engine remains as a fallback for integer PCM WAV normalization and gain on devices without a supported FFmpeg ABI.
+
+The current FFmpeg dependency is the community-maintained audio-only package `dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.9`, under LGPL-3.0. The app should retain the corresponding third-party notices and licence information in release builds. The audio-only variant is selected to avoid bundling the complete video feature set.
 
 ## Processing rules
 
-1. Opening a tool prepares its interface; it does not silently start modifying a file.
-2. Processing begins only after the user chooses a source and taps **Process**.
-3. Work is submitted to WorkManager and continues if the user leaves the tool or closes the screen.
-4. Returning to a tool or opening the queue reads the existing job state. It never starts the same operation again automatically.
-5. Cancellation is explicit. The source file is never overwritten.
-6. Results are written as new files. Temporary files are removed after success or failure.
-7. Unsupported WAV encodings are rejected with an understandable error instead of producing a corrupt file.
+1. Opening a tool prepares its screen; it does not start changing a file.
+2. Processing starts only after the user selects a source and taps the action button.
+3. Jobs are submitted to WorkManager and can continue when the user leaves a screen.
+4. Returning to the app reads the existing job state; it does not restart a task.
+5. Cancellation is explicit.
+6. Original source files are not overwritten. Results are saved as new files in the Audio Lab music folder.
+7. Temporary copies are deleted after success, failure or cancellation.
+8. Unsupported formats and encodings should return a readable error rather than a corrupt output.
 
 ## Technical stack
 
 - Kotlin, Android native, Jetpack Compose and Material 3.
 - WorkManager for persistent background work.
-- Android MediaMetadataRetriever for file inspection.
+- Maintained FFmpeg audio library plus FFprobe for multiformat operations.
+- Android MediaMetadataRetriever as an inspection fallback.
 - A streaming PCM WAV processor (8/16/24/32-bit integer PCM).
 - Storage Access Framework and MediaStore for safe file access.
 
@@ -50,6 +71,6 @@ Open the repository in a recent Android Studio version with JDK 17 and Android S
 
 The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 9.5.0`.
 
-## Current stage
+## Validation status
 
-This is the first application foundation, not a release build. The next milestones are additional editing and conversion engines, automated tests for audio edge cases, accessibility polish, and release validation on real Android devices.
+The GitHub Actions workflow runs `assembleDebug` and `testDebugUnitTest` for each commit on `main`. A passing CI build validates compilation and unit tests; it does not replace real-device testing across supported Android versions, file providers, codecs and audio edge cases.
