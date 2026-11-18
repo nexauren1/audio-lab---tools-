@@ -30,7 +30,10 @@ jobs:
           fi
           set +o pipefail
           yes | "$SDKMANAGER" --licenses
-          yes | "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0"
+          yes | "$SDKMANAGER" --channel=1 "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$SDK_ROOT/platforms/android-37.0" ] && [ ! -e "$SDK_ROOT/platforms/android-37" ]; then
+            ln -s "$SDK_ROOT/platforms/android-37.0" "$SDK_ROOT/platforms/android-37"
+          fi
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
