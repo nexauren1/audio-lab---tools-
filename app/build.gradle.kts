@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.ffmpegkit.audio)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.runtime.livedata)
