@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.nexauren.audiolabtools"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.nexauren.audiolabtools"
