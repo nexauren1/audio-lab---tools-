@@ -25,10 +25,11 @@ import com.nexauren.audiolabtools.ui.screens.LibraryScreen
 import com.nexauren.audiolabtools.ui.screens.ProcessingScreen
 import com.nexauren.audiolabtools.ui.screens.SettingsScreen
 import com.nexauren.audiolabtools.ui.screens.ToolDetailScreen
+import com.nexauren.audiolabtools.ui.screens.ToolsScreen
 import com.nexauren.audiolabtools.ui.theme.AudioLabPalette
 
 private enum class Destination {
-    HOME, PROCESSING, LIBRARY, SETTINGS, TOOL
+    HOME, TOOLS, PROCESSING, LIBRARY, SETTINGS, TOOL
 }
 
 @Composable
@@ -65,13 +66,13 @@ fun AudioLabApp() {
         bottomBar = {
             if (current != Destination.TOOL) {
                 NavigationBar(
-                    containerColor = Color(0xFF0A1120),
+                    containerColor = Color(0xFF090E1B),
                     tonalElevation = 0.dp
                 ) {
                     val items = listOf(
                         Triple(Destination.HOME, "⌂", localized("Início", "Home")),
-                        Triple(Destination.PROCESSING, "◷", localized("Processos", "Queue")),
-                        Triple(Destination.LIBRARY, "♫", localized("Ficheiros", "Files")),
+                        Triple(Destination.TOOLS, "▦", localized("Ferramentas", "Tools")),
+                        Triple(Destination.LIBRARY, "♫", localized("Ficheiros", "Library")),
                         Triple(Destination.SETTINGS, "⚙", localized("Definições", "Settings"))
                     )
                     items.forEach { (target, symbol, label) ->
@@ -81,9 +82,9 @@ fun AudioLabApp() {
                             icon = { Text(symbol) },
                             label = { Text(label) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = AudioLabPalette.Cyan,
-                                selectedTextColor = AudioLabPalette.Cyan,
-                                indicatorColor = Color(0xFF14304B),
+                                selectedIconColor = AudioLabPalette.Violet,
+                                selectedTextColor = AudioLabPalette.Violet,
+                                indicatorColor = Color(0xFF21164B),
                                 unselectedIconColor = AudioLabPalette.Muted,
                                 unselectedTextColor = AudioLabPalette.Muted
                             )
@@ -101,7 +102,11 @@ fun AudioLabApp() {
             when (current) {
                 Destination.HOME -> HomeScreen(
                     onOpenTool = { tool -> openTool(tool.id) },
-                    onOpenProcessing = { destination = Destination.PROCESSING.name }
+                    onOpenProcessing = { destination = Destination.PROCESSING.name },
+                    onOpenTools = { destination = Destination.TOOLS.name }
+                )
+                Destination.TOOLS -> ToolsScreen(
+                    onOpenTool = { tool -> openTool(tool.id) }
                 )
                 Destination.PROCESSING -> ProcessingScreen()
                 Destination.LIBRARY -> LibraryScreen(
