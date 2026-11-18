@@ -48,7 +48,6 @@ fun HomeScreen(
 ) {
     val isPt = isPortuguese()
     val quickTools = listOf(
-        "trim-audio" to localized("Cortar", "Trim", isPt),
         "audio-info" to localized("Analisar", "Analyze", isPt),
         "normalize-wav" to localized("Normalizar", "Normalize", isPt),
         "amplify-wav" to localized("Volume", "Gain", isPt)
@@ -154,7 +153,7 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
             quickTools.forEachIndexed { index, (tool, label) ->
                 val tint = listOf(
-                    Color(0xFFB53BFF), Color(0xFF00BDEB), Color(0xFF21D6A2), Color(0xFFFF963B)
+                    Color(0xFFB53BFF), Color(0xFF00BDEB), Color(0xFF21D6A2)
                 )[index]
                 QuickActionCard(
                     title = label,
@@ -164,6 +163,13 @@ fun HomeScreen(
                     onClick = { onOpenTool(tool) }
                 )
             }
+            QuickActionCard(
+                title = localized("Ver tudo", "All tools", isPt),
+                symbol = "▦",
+                tint = Color(0xFFFF963B),
+                modifier = Modifier.weight(1f),
+                onClick = onOpenTools
+            )
         }
 
         Spacer(Modifier.height(26.dp))
