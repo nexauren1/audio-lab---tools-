@@ -254,6 +254,17 @@ private fun ProcessingJobCard(
                         color = AudioLabPalette.Muted,
                         fontSize = 10.sp
                     )
+                    val analysisSummary = info.outputData
+                        .getString(ProcessingContract.KEY_ANALYSIS_SUMMARY).orEmpty()
+                    if (analysisSummary.isNotBlank()) {
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            analysisSummary,
+                            color = Color(0xFFD0DBEF),
+                            fontSize = 10.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
                 if (outputUri != null) {
                     Button(
