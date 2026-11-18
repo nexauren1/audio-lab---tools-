@@ -699,6 +699,7 @@ private fun FormatChoice(
     }
 }
 
+@Composable
 private fun audioTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = AudioLabPalette.Violet,
     unfocusedBorderColor = AudioLabPalette.Border,
