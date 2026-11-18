@@ -880,7 +880,17 @@ private fun JobStatusPanel(
                     MetadataLine(localized("Tamanho", "Size", isPt), formatBytes(size))
                     MetadataLine(localized("Duração", "Duration", isPt), formatDuration(duration))
                     if (bitrate > 0L) MetadataLine(localized("Bitrate", "Bitrate", isPt), (bitrate / 1000L).toString() + " kbps")
-                    if (sampleRate > 0) MetadataLine(localized("Amostragem", "Sample rate", isPt), (sampleRate / 1000.0).toString() + " kHz")
+                    if (sampleRate > 0) MetadataLine(localized("Amostragem", "Sample rate", isPt), sampleRate.toString() + " Hz")
+                    val analysisSummary = info.outputData.getString(ProcessingContract.KEY_ANALYSIS_SUMMARY).orEmpty()
+                    if (analysisSummary.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            analysisSummary,
+                            color = Color(0xFFD0DBEF),
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
                 }
             }
             if (info.state == WorkInfo.State.FAILED) {
