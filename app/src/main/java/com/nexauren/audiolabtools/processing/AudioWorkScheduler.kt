@@ -26,6 +26,7 @@ object AudioWorkScheduler {
             )
             .addTag(ProcessingContract.TAG_PROCESSING)
             .addTag(ProcessingContract.toolTag(toolId))
+            .addTag(ProcessingContract.sourceTag(sourceName))
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
@@ -57,6 +58,7 @@ object AudioWorkScheduler {
             )
             .addTag(ProcessingContract.TAG_PROCESSING)
             .addTag(ProcessingContract.toolTag(toolId))
+            .addTag(ProcessingContract.sourceTag(sourceName))
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
