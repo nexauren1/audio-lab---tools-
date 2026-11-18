@@ -53,7 +53,7 @@ object AudioToolCatalog {
             "⋈", ToolOperation.NOT_READY),
         AudioTool("join-audio", ToolCategory.EDIT, "Unir áudios", "Join audio files",
             "Juntar vários ficheiros numa faixa.", "Combine multiple files into one track.",
-            "＋", ToolOperation.FFMPEG_JOIN),
+            "＋", ToolOperation.NOT_READY),
         AudioTool("convert-audio", ToolCategory.CONVERT, "Converter formato", "Convert format",
             "Converter entre MP3, WAV, FLAC, AAC, M4A, OGG e OPUS.", "Convert between MP3, WAV, FLAC, AAC, M4A, OGG and OPUS.",
             "⇄", ToolOperation.FFMPEG_CONVERT),
