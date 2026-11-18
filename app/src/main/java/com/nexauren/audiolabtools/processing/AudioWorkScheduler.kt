@@ -114,6 +114,45 @@ object AudioWorkScheduler {
         return uniqueName
     }
 
+    fun enqueueFfmpegJoin(
+        context: Context,
+        files: List<Pair<Uri, String>>,
+        outputFormat: String = "m4a"
+    ): String {
+        require(files.size in 2..8) { "Choose between 2 and 8 audio files to join." }
+        val uris = files.map { it.first.toString() }
+        val names = files.map { it.second }
+        val sourceLabel = "${files.size} audio files"
+        val digestInput = uris.joinToString("|")
+        val bytes = MessageDigest.getInstance("SHA-256")
+            .digest(digestInput.toByteArray(Charsets.UTF_8))
+        val key = bytes.take(10).joinToString("") { "%02x".format(it) }
+        val uniqueName = "audio_lab_join_audio_" + key
+
+        val request = OneTimeWorkRequestBuilder<FfmpegAudioWorker>()
+            .setInputData(
+                workDataOf(
+                    ProcessingContract.KEY_INPUT_URI to uris.first(),
+                    ProcessingContract.KEY_INPUT_URIS to uris.toTypedArray(),
+                    ProcessingContract.KEY_INPUT_NAMES to names.toTypedArray(),
+                    ProcessingContract.KEY_SOURCE_NAME to sourceLabel,
+                    ProcessingContract.KEY_TOOL_ID to "join-audio",
+                    ProcessingContract.KEY_OUTPUT_FORMAT to outputFormat
+                )
+            )
+            .addTag(ProcessingContract.TAG_PROCESSING)
+            .addTag(ProcessingContract.toolTag("join-audio"))
+            .addTag(ProcessingContract.sourceTag(sourceLabel))
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            uniqueName,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        return uniqueName
+    }
+
     private fun uniqueName(toolId: String, uri: Uri): String {
         val bytes = MessageDigest.getInstance("SHA-256")
             .digest(uri.toString().toByteArray(Charsets.UTF_8))
