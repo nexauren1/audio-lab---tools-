@@ -8,7 +8,7 @@ object ProcessingContract {
     const val KEY_SOURCE_NAME = "source_name"
     const val KEY_GAIN_DB = "gain_db"
     const val KEY_OUTPUT_FORMAT = "output_format"
-    const val KEY_BITRATE = "target_bitrate"
+    const val KEY_TARGET_BITRATE = "target_bitrate"
     const val KEY_START_SECONDS = "start_seconds"
     const val KEY_DURATION_SECONDS = "duration_seconds"
     const val KEY_SPEED = "speed"
