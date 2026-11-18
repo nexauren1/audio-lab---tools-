@@ -24,4 +24,5 @@ object ProcessingContract {
     const val KEY_ERROR = "error"
 
     fun toolTag(toolId: String) = "audio_lab_tool_$toolId"
+    fun sourceTag(sourceName: String) = "audio_lab_source_$sourceName"
 }
