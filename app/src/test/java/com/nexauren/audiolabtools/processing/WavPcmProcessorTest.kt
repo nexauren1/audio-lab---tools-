@@ -2,6 +2,7 @@ package com.nexauren.audiolabtools.processing
 
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -11,7 +12,7 @@ import kotlin.math.abs
 class WavPcmProcessorTest {
     @Test
     fun normalize16BitPcmKeepsValidWavAndTargetsPeak() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = Files.createTempDirectory("audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val output = File(folder, "normalized.wav")
@@ -47,7 +48,7 @@ class WavPcmProcessorTest {
 
     @Test
     fun gainDbIsAppliedToPcmSamples() = runBlocking {
-        val folder = createTempDir(prefix = "audio-lab-test-")
+        val folder = Files.createTempDirectory("audio-lab-test-").toFile()
         try {
             val input = File(folder, "input.wav")
             val output = File(folder, "gain.wav")
