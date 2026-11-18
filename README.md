@@ -46,9 +46,9 @@ Other tools are visible in the catalogue but clearly marked as planned until the
 
 ## Build
 
-Open the repository in a recent Android Studio version with JDK 17 and Android SDK 36 installed. Let Gradle sync, then run the `app` configuration.
+Open the repository in a recent Android Studio version with JDK 17 and Android SDK Platform 37 installed. The project uses Android Gradle Plugin 9.3.1, Gradle 9.5.0 and Kotlin 2.4.21. Keep `compileSdk` at 37; `targetSdk` remains 36 until Android 17 behaviour changes are tested. Let Gradle sync, then run the `app` configuration.
 
-The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 8.13`.
+The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapper.properties`. If the wrapper scripts are not present in a local checkout, generate them with `gradle wrapper --gradle-version 9.5.0`.
 
 ## Current stage
 
