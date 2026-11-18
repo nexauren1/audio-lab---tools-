@@ -221,12 +221,19 @@ fun ToolDetailScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        localized(
-                            if (tool.operation == ToolOperation.FFMPEG_JOIN)
-                                localized("Seleciona entre 2 e 8 ficheiros. A ordem da seleção será mantida.", "Select 2 to 8 files. The selection order will be preserved.", isPt)
-                            else localized("Escolhe um ficheiro do dispositivo. O original nunca será alterado.", "Choose a file from your device. The original will never be changed.", isPt),
-                            isPt
-                        ),
+                        if (tool.operation == ToolOperation.FFMPEG_JOIN) {
+                            localized(
+                                "Seleciona entre 2 e 8 ficheiros. A ordem da seleção será mantida.",
+                                "Select 2 to 8 files. The selection order will be preserved.",
+                                isPt
+                            )
+                        } else {
+                            localized(
+                                "Escolhe um ficheiro do dispositivo. O original nunca será alterado.",
+                                "Choose a file from your device. The original will never be changed.",
+                                isPt
+                            )
+                        },
                         color = AudioLabPalette.Muted,
                         fontSize = 12.sp
                     )
@@ -293,7 +300,7 @@ fun ToolDetailScreen(
                         if (tool.operation == ToolOperation.FFMPEG_JOIN && selectedJoinNames.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                selectedJoinNames.joinToString(separator = "\\n"),
+                                selectedJoinNames.joinToString(separator = "\n"),
                                 color = AudioLabPalette.Muted,
                                 fontSize = 10.sp,
                                 lineHeight = 14.sp,
