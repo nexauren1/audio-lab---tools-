@@ -31,8 +31,23 @@ class FfmpegAudioWorker(
                 workDataOf(ProcessingContract.KEY_ERROR to "No audio file was selected.")
             )
         val toolId = inputData.getString(ProcessingContract.KEY_TOOL_ID).orEmpty()
-        val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME).orEmpty()
-        val sourceExtension = sourceName.substringAfterLast('.', "audio")
+        val sourceUris = inputData.getStringArray(ProcessingContract.KEY_INPUT_URIS)
+            ?.mapNotNull(Uri::parse)
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(sourceUri)
+        val sourceNames = inputData.getStringArray(ProcessingContract.KEY_INPUT_NAMES)
+            ?.toList()
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(inputData.getString(ProcessingContract.KEY_SOURCE_NAME).orEmpty())
+        val sourceName = inputData.getString(ProcessingContract.KEY_SOURCE_NAME)
+            .orEmpty().ifBlank { sourceNames.firstOrNull().orEmpty() }
+        if (toolId == "join-audio" && sourceUris.size !in 2..8) {
+            return@withContext Result.failure(
+                workDataOf(ProcessingContract.KEY_ERROR to "Choose between 2 and 8 audio files to join.")
+            )
+        }
+        val sourceExtension = sourceNames.firstOrNull().orEmpty()
+            .substringAfterLast('.', "audio")
             .lowercase(Locale.ROOT)
             .filter { it.isLetterOrDigit() }
             .ifBlank { "audio" }
@@ -46,7 +61,15 @@ class FfmpegAudioWorker(
         cacheFolder.mkdirs()
         exportFolder.mkdirs()
 
-        val sourceCopy = File.createTempFile("source_", ".$sourceExtension", cacheFolder)
+        val sourceCopies = sourceUris.mapIndexed { index, _ ->
+            val extension = sourceNames.getOrNull(index).orEmpty()
+                .substringAfterLast('.', sourceExtension)
+                .lowercase(Locale.ROOT)
+                .filter { it.isLetterOrDigit() }
+                .ifBlank { sourceExtension }
+            File.createTempFile("source_${index}_", ".$extension", cacheFolder)
+        }
+        val sourceCopy = sourceCopies.first()
         var outputFile: File? = null
 
         try {
@@ -60,7 +83,9 @@ class FfmpegAudioWorker(
                 ProcessingContract.KEY_PROGRESS to 8,
                 ProcessingContract.KEY_STAGE to "Importing audio file"
             ))
-            copySource(sourceUri, sourceCopy)
+            sourceUris.forEachIndexed { index, uri ->
+                copySource(uri, sourceCopies[index])
+            }
 
             val outputFormat = inputData.getString(ProcessingContract.KEY_OUTPUT_FORMAT)
                 ?.lowercase(Locale.ROOT)
@@ -89,6 +114,7 @@ class FfmpegAudioWorker(
             val outputExtension = when (toolId) {
                 "audio-compress" -> "m4a"
                 "convert-audio" -> outputFormat
+                "join-audio" -> outputFormat
                 else -> sourceExtension.takeIf { it in SUPPORTED_FORMATS }
                     ?: throw IllegalArgumentException(
                         "This operation needs an audio file in MP3, WAV, FLAC, AAC, M4A, OGG or OPUS format."
@@ -108,6 +134,7 @@ class FfmpegAudioWorker(
                 "speed-audio" -> "_speed"
                 "pitch-audio" -> "_pitch"
                 "edit-metadata" -> "_tagged"
+                "join-audio" -> "_joined"
                 else -> "_processed"
             }
             outputFile = File(
@@ -119,7 +146,11 @@ class FfmpegAudioWorker(
                 ProcessingContract.KEY_PROGRESS to 22,
                 ProcessingContract.KEY_STAGE to "Preparing audio processing"
             ))
-            val arguments = buildArguments(toolId, sourceCopy, outputFile, outputFormat)
+            val arguments = if (toolId == "join-audio") {
+                buildJoinArguments(sourceCopies, outputFile, outputFormat)
+            } else {
+                buildArguments(toolId, sourceCopy, outputFile, outputFormat)
+            }
             setProgress(workDataOf(
                 ProcessingContract.KEY_PROGRESS to 48,
                 ProcessingContract.KEY_STAGE to "Processing audio locally"
@@ -165,8 +196,36 @@ class FfmpegAudioWorker(
                 )
             )
         } finally {
-            sourceCopy.delete()
+            sourceCopies.forEach(File::delete)
         }
+    }
+
+    private fun buildJoinArguments(
+        sources: List<File>,
+        output: File,
+        outputFormat: String
+    ): List<String> {
+        require(sources.size in 2..8) { "Choose between 2 and 8 audio files to join." }
+        val args = mutableListOf("-hide_banner", "-nostdin", "-y")
+        sources.forEach { source ->
+            args += listOf("-i", source.absolutePath)
+        }
+        val filters = buildString {
+            sources.indices.forEach { index ->
+                append("[").append(index).append(":a:0]")
+                append("aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo")
+                append("[a").append(index).append("];")
+            }
+            sources.indices.forEach { index ->
+                append("[a").append(index).append("]")
+            }
+            append("concat=n=").append(sources.size)
+                .append(":v=0:a=1[outa]")
+        }
+        args += listOf("-filter_complex", filters, "-map", "[outa]", "-vn")
+        args += codecOptions(outputFormat, "192k")
+        args += output.absolutePath
+        return args
     }
 
     private suspend fun copySource(uri: Uri, destination: File) {
