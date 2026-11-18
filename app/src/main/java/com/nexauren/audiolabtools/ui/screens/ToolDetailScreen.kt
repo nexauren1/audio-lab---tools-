@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +56,7 @@ import com.nexauren.audiolabtools.data.ToolOperation
 import com.nexauren.audiolabtools.data.isPortuguese
 import com.nexauren.audiolabtools.data.localized
 import com.nexauren.audiolabtools.processing.AudioWorkScheduler
+import com.nexauren.audiolabtools.processing.FfmpegAudioEngine
 import com.nexauren.audiolabtools.processing.ProcessingContract
 import com.nexauren.audiolabtools.ui.theme.AudioLabPalette
 import java.util.Locale
@@ -71,6 +75,21 @@ fun ToolDetailScreen(
     var selectedUri by rememberSaveable(tool.id, initialUri) { mutableStateOf(initialUri) }
     var sourceName by rememberSaveable(tool.id, initialName) { mutableStateOf(initialName.orEmpty()) }
     var gainDb by rememberSaveable(tool.id) { mutableStateOf(3f) }
+    var outputFormat by rememberSaveable(tool.id) {
+        mutableStateOf(
+            initialName?.substringAfterLast('.', "mp3")?.lowercase(Locale.ROOT)
+                ?.takeIf { it in setOf("mp3", "wav", "flac", "aac", "m4a", "ogg", "opus") }
+                ?: "mp3"
+        )
+    }
+    var targetBitrate by rememberSaveable(tool.id) { mutableStateOf(128f) }
+    var trimStart by rememberSaveable(tool.id) { mutableStateOf("0") }
+    var trimDuration by rememberSaveable(tool.id) { mutableStateOf("15") }
+    var speed by rememberSaveable(tool.id) { mutableStateOf(1.25f) }
+    var pitch by rememberSaveable(tool.id) { mutableStateOf(2f) }
+    var metadataTitle by rememberSaveable(tool.id) { mutableStateOf("") }
+    var metadataArtist by rememberSaveable(tool.id) { mutableStateOf("") }
+    val ffmpegSupported = FfmpegAudioEngine.isSupportedOnThisDevice()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -274,19 +293,156 @@ fun ToolDetailScreen(
                 }
             }
 
+            when (tool.operation) {
+                ToolOperation.FFMPEG_CONVERT -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Formato de saída", "Output format", isPt)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            listOf("mp3", "wav", "flac", "aac", "m4a", "ogg", "opus").forEach { format ->
+                                FormatChoice(
+                                    label = format.uppercase(Locale.ROOT),
+                                    selected = outputFormat == format,
+                                    onClick = { outputFormat = format }
+                                )
+                            }
+                        }
+                    }
+                }
+                ToolOperation.FFMPEG_COMPRESS -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Qualidade de compressão", "Compression quality", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                localized("Bitrate AAC", "AAC bitrate", isPt),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "${targetBitrate.toInt()} kbps",
+                                color = AudioLabPalette.Cyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = targetBitrate,
+                            onValueChange = { targetBitrate = it },
+                            valueRange = 64f..256f,
+                            steps = 5
+                        )
+                        Text(
+                            localized("Valores menores geram ficheiros menores e podem reduzir a qualidade.", "Lower values create smaller files and may reduce quality.", isPt),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                ToolOperation.FFMPEG_TRIM -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Intervalo de corte", "Trim range", isPt)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = trimStart,
+                                onValueChange = { trimStart = it.filter { char -> char.isDigit() || char == '.' } },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(localized("Início (s)", "Start (s)", isPt)) },
+                                colors = audioTextFieldColors()
+                            )
+                            OutlinedTextField(
+                                value = trimDuration,
+                                onValueChange = { trimDuration = it.filter { char -> char.isDigit() || char == '.' } },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text(localized("Duração (s)", "Duration (s)", isPt)) },
+                                colors = audioTextFieldColors()
+                            )
+                        }
+                        Text(
+                            localized("O original permanece intacto. O corte é guardado num novo ficheiro.", "The original stays intact. The trimmed audio is saved as a new file.", isPt),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                ToolOperation.FFMPEG_SPEED -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Velocidade de reprodução", "Playback speed", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Velocidade", "Speed", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text(String.format(Locale.US, "%.2fx", speed), color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(value = speed, onValueChange = { speed = it }, valueRange = 0.5f..2f, steps = 14)
+                    }
+                }
+                ToolOperation.FFMPEG_PITCH -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Tonalidade", "Pitch", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Semitons", "Semitones", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text(String.format(Locale.US, "%+.1f", pitch), color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(value = pitch, onValueChange = { pitch = it }, valueRange = -6f..6f, steps = 23)
+                    }
+                }
+                ToolOperation.FFMPEG_METADATA -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Etiquetas do ficheiro", "File tags", isPt)) {
+                        OutlinedTextField(
+                            value = metadataTitle,
+                            onValueChange = { metadataTitle = it.take(120) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Título", "Title", isPt)) },
+                            colors = audioTextFieldColors()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = metadataArtist,
+                            onValueChange = { metadataArtist = it.take(120) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(localized("Artista", "Artist", isPt)) },
+                            colors = audioTextFieldColors()
+                        )
+                    }
+                }
+                else -> Unit
+            }
+
             Spacer(Modifier.height(17.dp))
             val supported = when (tool.operation) {
                 ToolOperation.INSPECT_AUDIO -> localized(
-                    "Aceita ficheiros que o Android consiga ler como áudio.",
-                    "Accepts audio files that Android can read.",
+                    "Inspeção de ficheiros de áudio compatíveis com o dispositivo.",
+                    "Inspection of audio formats supported by the device.",
                     isPt
                 )
-                ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV -> localized(
-                    "Nesta versão: WAV PCM inteiro de 8, 16, 24 ou 32 bits. WAV float e outros formatos ainda não são aceites por este motor.",
-                    "This version: 8, 16, 24 or 32-bit integer PCM WAV. Float WAV and other formats are not supported by this engine yet.",
-                    isPt
-                )
-                else -> ""
+                ToolOperation.NORMALIZE_WAV,
+                ToolOperation.GAIN_WAV,
+                ToolOperation.FFMPEG_CONVERT,
+                ToolOperation.FFMPEG_COMPRESS,
+                ToolOperation.FFMPEG_TRIM,
+                ToolOperation.FFMPEG_NOISE_REDUCTION,
+                ToolOperation.FFMPEG_SPEED,
+                ToolOperation.FFMPEG_PITCH,
+                ToolOperation.FFMPEG_METADATA,
+                ToolOperation.FFMPEG_ANALYZE -> if (ffmpegSupported) {
+                    localized(
+                        "Motor local multiformato: MP3, WAV, FLAC, AAC, M4A, OGG e OPUS. O ficheiro original não é substituído.",
+                        "Local multiformat engine: MP3, WAV, FLAC, AAC, M4A, OGG and OPUS. The source file is never overwritten.",
+                        isPt
+                    )
+                } else {
+                    localized(
+                        "O motor multiformato requer Android de 64 bits. Neste dispositivo, apenas operações WAV compatíveis continuam disponíveis.",
+                        "The multiformat engine requires 64-bit Android. On this device, only compatible WAV operations remain available.",
+                        isPt
+                    )
+                }
+                ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> ""
             }
             InfoLine(text = supported)
 
@@ -297,20 +453,53 @@ fun ToolDetailScreen(
                     when (tool.operation) {
                         ToolOperation.INSPECT_AUDIO ->
                             AudioWorkScheduler.enqueueInspection(context, uri, sourceName)
-                        ToolOperation.NORMALIZE_WAV ->
-                            AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = true, gainDb = 0.0
-                            )
-                        ToolOperation.GAIN_WAV ->
-                            AudioWorkScheduler.enqueueWavOperation(
-                                context, uri, sourceName, tool.id, normalize = false, gainDb = gainDb.toDouble()
-                            )
-                        ToolOperation.NOT_READY -> Unit
+                        ToolOperation.NORMALIZE_WAV,
+                        ToolOperation.GAIN_WAV,
+                        ToolOperation.FFMPEG_CONVERT,
+                        ToolOperation.FFMPEG_COMPRESS,
+                        ToolOperation.FFMPEG_TRIM,
+                        ToolOperation.FFMPEG_NOISE_REDUCTION,
+                        ToolOperation.FFMPEG_SPEED,
+                        ToolOperation.FFMPEG_PITCH,
+                        ToolOperation.FFMPEG_METADATA,
+                        ToolOperation.FFMPEG_ANALYZE -> {
+                            if (!ffmpegSupported && sourceName.endsWith(".wav", ignoreCase = true) &&
+                                tool.operation in setOf(ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV)
+                            ) {
+                                AudioWorkScheduler.enqueueWavOperation(
+                                    context, uri, sourceName, tool.id,
+                                    normalize = tool.operation == ToolOperation.NORMALIZE_WAV,
+                                    gainDb = gainDb.toDouble()
+                                )
+                            } else {
+                                AudioWorkScheduler.enqueueFfmpegOperation(
+                                    context = context,
+                                    uri = uri,
+                                    sourceName = sourceName,
+                                    toolId = tool.id,
+                                    outputFormat = outputFormat,
+                                    targetBitrate = "${targetBitrate.toInt()}k",
+                                    startSeconds = trimStart.toDoubleOrNull() ?: 0.0,
+                                    durationSeconds = trimDuration.toDoubleOrNull() ?: 15.0,
+                                    gainDb = gainDb.toDouble(),
+                                    speed = speed.toDouble(),
+                                    pitch = pitch.toDouble(),
+                                    title = metadataTitle,
+                                    artist = metadataArtist
+                                )
+                            }
+                        }
+                        ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> Unit
                     }
                 },
                 enabled = selectedUri != null && !isProcessing &&
                     (tool.operation == ToolOperation.INSPECT_AUDIO ||
-                        sourceName.endsWith(".wav", ignoreCase = true)),
+                        ffmpegSupported ||
+                        (sourceName.endsWith(".wav", ignoreCase = true) &&
+                            tool.operation in setOf(ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV))) &&
+                    (tool.operation != ToolOperation.FFMPEG_TRIM ||
+                        ((trimStart.toDoubleOrNull() ?: -1.0) >= 0.0 &&
+                            (trimDuration.toDoubleOrNull() ?: 0.0) > 0.0)),
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1769D2),
@@ -322,21 +511,42 @@ fun ToolDetailScreen(
             ) {
                 Text(
                     when (tool.operation) {
-                        ToolOperation.INSPECT_AUDIO -> localized("Analisar ficheiro", "Analyse file", isPt)
+                        ToolOperation.INSPECT_AUDIO -> localized("Analisar ficheiro", "Inspect file", isPt)
                         ToolOperation.NORMALIZE_WAV -> localized("Normalizar áudio", "Normalize audio", isPt)
                         ToolOperation.GAIN_WAV -> localized("Aplicar ganho", "Apply gain", isPt)
-                        ToolOperation.NOT_READY -> ""
+                        ToolOperation.FFMPEG_CONVERT -> localized("Converter áudio", "Convert audio", isPt)
+                        ToolOperation.FFMPEG_COMPRESS -> localized("Comprimir áudio", "Compress audio", isPt)
+                        ToolOperation.FFMPEG_TRIM -> localized("Cortar e exportar", "Trim and export", isPt)
+                        ToolOperation.FFMPEG_NOISE_REDUCTION -> localized("Reduzir ruído", "Reduce noise", isPt)
+                        ToolOperation.FFMPEG_SPEED -> localized("Aplicar velocidade", "Apply speed", isPt)
+                        ToolOperation.FFMPEG_PITCH -> localized("Aplicar tonalidade", "Apply pitch", isPt)
+                        ToolOperation.FFMPEG_METADATA -> localized("Guardar metadados", "Save metadata", isPt)
+                        ToolOperation.FFMPEG_ANALYZE -> localized("Analisar frequências", "Analyse frequencies", isPt)
+                        ToolOperation.FFMPEG_JOIN, ToolOperation.NOT_READY -> ""
                     },
                     fontWeight = FontWeight.Bold
                 )
             }
-            if (tool.operation != ToolOperation.INSPECT_AUDIO &&
-                selectedUri != null && !sourceName.endsWith(".wav", ignoreCase = true)
+            if (!ffmpegSupported && selectedUri != null &&
+                tool.operation in setOf(
+                    ToolOperation.FFMPEG_CONVERT,
+                    ToolOperation.FFMPEG_COMPRESS,
+                    ToolOperation.FFMPEG_TRIM,
+                    ToolOperation.FFMPEG_NOISE_REDUCTION,
+                    ToolOperation.FFMPEG_SPEED,
+                    ToolOperation.FFMPEG_PITCH,
+                    ToolOperation.FFMPEG_METADATA,
+                    ToolOperation.FFMPEG_ANALYZE
+                )
             ) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    localized("Esta ferramenta exige um ficheiro .wav.", "This tool requires a .wav file.", isPt),
-                    color = AudioLabPalette.Muted,
+                    localized(
+                        "Este dispositivo não tem uma ABI de 64 bits suportada pelo motor multiformato.",
+                        "This device does not have a 64-bit ABI supported by the multiformat engine.",
+                        isPt
+                    ),
+                    color = Color(0xFFFFC06B),
                     fontSize = 11.sp
                 )
             }
