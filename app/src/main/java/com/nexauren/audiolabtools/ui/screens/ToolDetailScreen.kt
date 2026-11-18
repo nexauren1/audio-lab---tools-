@@ -656,6 +656,61 @@ private fun AudioToolBanner(tool: AudioTool, isPt: Boolean) {
 }
 
 @Composable
+private fun AudioOptionCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF11192C)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, AudioLabPalette.Border)
+    ) {
+        Column(Modifier.padding(15.dp)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(Modifier.height(11.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun FormatChoice(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Color(0xFF4C22A9) else Color(0xFF1A2439))
+            .then(
+                Modifier.clickable(onClick = onClick)
+            )
+            .padding(horizontal = 13.dp, vertical = 9.dp)
+    ) {
+        Text(
+            label,
+            color = if (selected) Color.White else AudioLabPalette.Muted,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+private fun audioTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = AudioLabPalette.Violet,
+    unfocusedBorderColor = AudioLabPalette.Border,
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedLabelColor = AudioLabPalette.Cyan,
+    unfocusedLabelColor = AudioLabPalette.Muted,
+    cursorColor = AudioLabPalette.Cyan,
+    focusedContainerColor = Color(0xFF0D1526),
+    unfocusedContainerColor = Color(0xFF0D1526)
+)
+
+@Composable
 private fun NotReadyPanel(isPt: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
