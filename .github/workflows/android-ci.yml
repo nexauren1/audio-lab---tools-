@@ -28,6 +28,7 @@ jobs:
             echo "Android sdkmanager was not found under $SDK_ROOT"
             exit 1
           fi
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses
           yes | "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0"
       - name: Set up Gradle
