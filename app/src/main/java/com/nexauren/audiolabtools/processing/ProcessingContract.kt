@@ -10,6 +10,7 @@ object ProcessingContract {
     const val KEY_SOURCE_NAME = "source_name"
     const val KEY_GAIN_DB = "gain_db"
     const val KEY_NOISE_REDUCTION = "noise_reduction_db"
+    const val KEY_NOISE_FLOOR_DB = "noise_floor_db"
     const val KEY_COMPRESSOR_RATIO = "compressor_ratio"
     const val KEY_COMPRESSOR_THRESHOLD_DB = "compressor_threshold_db"
     const val KEY_OUTPUT_FORMAT = "output_format"
