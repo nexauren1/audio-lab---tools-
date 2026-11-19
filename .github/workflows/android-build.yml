@@ -1,0 +1,123 @@
+name: Android build
+
+on:
+  push:
+    branches:
+      - main
+      - feat/advanced-bilingual-audio-lab
+      - fix/audio-lab-premium-processing
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      # Pull requests build debug only; repository secrets are not used here.
+      - name: Assemble debug APK
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+      # Normalize whitespace/padding in the Base64 secret, then validate the
+      # actual JKS, store password and alias before starting the release build.
+      - name: Decode and validate release keystore
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing KEYSTORE_BASE64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::Missing KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::Missing KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Missing KEY_PASSWORD"; exit 1; }
+
+          KEYSTORE_PATH="$RUNNER_TEMP/audio-lab-upload-keystore.jks"
+          export KEYSTORE_PATH
+
+          python3 - <<'PY'
+          import base64
+          import os
+          import re
+          from pathlib import Path
+
+          value = os.environ["KEYSTORE_BASE64"].strip()
+          if value.startswith("KEYSTORE_BASE64="):
+              value = value.split("=", 1)[1].strip()
+
+          # Ignore line wrapping or pasted whitespace and accept URL-safe Base64.
+          compact = re.sub(r"[^A-Za-z0-9+/=_-]", "", value)
+          compact = compact.replace("-", "+").replace("_", "/").rstrip("=")
+
+          if len(compact) % 4 == 1:
+              raise SystemExit("KEYSTORE_BASE64 has an invalid length; re-copy the value from the signing file.")
+
+          compact += "=" * ((4 - len(compact) % 4) % 4)
+          try:
+              keystore = base64.b64decode(compact, validate=True)
+          except Exception:
+              raise SystemExit("KEYSTORE_BASE64 could not be decoded; check the GitHub secret value.")
+
+          if not keystore.startswith(bytes.fromhex("FEEDFEED")):
+              raise SystemExit("Decoded file is not a Java JKS keystore.")
+
+          path = Path(os.environ["KEYSTORE_PATH"])
+          path.write_bytes(keystore)
+          path.chmod(0o600)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"AUDIO_LAB_KEYSTORE_FILE={path}\n")
+          PY
+
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          keytool -certreq -alias "$KEY_ALIAS" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" -file "$RUNNER_TEMP/audio-lab-signing-check.csr" >/dev/null
+          rm -f "$RUNNER_TEMP/audio-lab-signing-check.csr"
+          echo "JKS, store password, alias and private-key password validated."
+
+      - name: Assemble signed release APK and AAB
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease
+
+      - name: Verify APK signature
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          $ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner verify --verbose "$APK"
+
+      - name: Upload release files
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Audio-Lab-signed-release
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
