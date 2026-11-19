@@ -22,10 +22,9 @@ import androidx.compose.ui.unit.sp
 import com.nexauren.audiolabtools.data.isPortuguese
 import com.nexauren.audiolabtools.data.localized
 import com.nexauren.audiolabtools.ui.theme.AudioLabPalette
-import java.util.Locale
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onLanguageSelected: (String) -> Unit) {
     val isPt = isPortuguese()
     Column(
         modifier = Modifier
@@ -45,15 +44,47 @@ fun SettingsScreen() {
             color = AudioLabPalette.Muted,
             fontSize = 12.sp
         )
-        SettingsCard(
-            title = localized("Idioma", "Language", isPt),
-            value = Locale.getDefault().displayLanguage
+
+        Text(
+            localized("Idioma da aplicação", "App language", isPt),
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
         )
+        Text(
+            localized(
+                "Escolhe o idioma dos menus e das ferramentas.",
+                "Choose the language used by menus and tools.",
+                isPt
+            ),
+            color = AudioLabPalette.Muted,
+            fontSize = 11.sp
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            LanguageCard(
+                title = "English",
+                code = "EN",
+                selected = !isPt,
+                modifier = Modifier.weight(1f),
+                onClick = { onLanguageSelected("en") }
+            )
+            LanguageCard(
+                title = "Português",
+                code = "PT",
+                selected = isPt,
+                modifier = Modifier.weight(1f),
+                onClick = { onLanguageSelected("pt") }
+            )
+        }
+
         SettingsCard(
             title = localized("Processamento", "Processing", isPt),
             value = localized(
-                "Fila persistente • execução local • sem reinício ao voltar",
-                "Persistent queue • local execution • no restart on return",
+                "Fila persistente • execução local • tarefas continuam ao sair da ferramenta",
+                "Persistent queue • local execution • jobs continue when leaving a tool",
                 isPt
             )
         )
@@ -67,18 +98,56 @@ fun SettingsScreen() {
         )
         SettingsCard(
             title = localized("Versão", "Version", isPt),
-            value = "0.1.0 • Foundation"
+            value = "0.2.0"
         )
         Spacer(Modifier.height(4.dp))
         Text(
             localized(
-                "O Audio Lab não envia os teus ficheiros para um servidor. As ferramentas desta versão processam os ficheiros no dispositivo.",
-                "Audio Lab does not upload your files to a server. Tools in this version process files on the device.",
+                "O Audio Lab não envia os teus ficheiros para um servidor. As operações disponíveis processam os ficheiros no dispositivo.",
+                "Audio Lab does not upload your files to a server. Available operations process files on the device.",
                 isPt
             ),
             color = AudioLabPalette.Muted,
             fontSize = 11.sp
         )
+    }
+}
+
+@Composable
+private fun LanguageCard(
+    title: String,
+    code: String,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.height(94.dp),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Color(0xFF21164B) else AudioLabPalette.Surface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) AudioLabPalette.Violet else AudioLabPalette.Border
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text(
+                code,
+                color = if (selected) AudioLabPalette.Cyan else AudioLabPalette.Muted,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 19.sp
+            )
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            if (selected) {
+                Text("Selected", color = AudioLabPalette.Cyan, fontSize = 9.sp)
+            }
+        }
     }
 }
 
