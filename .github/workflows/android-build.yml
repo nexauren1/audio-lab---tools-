@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - feat/advanced-bilingual-audio-lab
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,5 +31,43 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # Pull requests build debug only because GitHub does not expose
+      # repository secrets to workflows triggered from forks.
       - name: Assemble debug APK
         run: gradle --no-daemon :app:assembleDebug
+
+      - name: Validate release signing secrets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing KEYSTORE_BASE64"; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::Missing KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::Missing KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Missing KEY_PASSWORD"; exit 1; }
+          echo "All release signing secrets are available."
+
+      - name: Assemble signed release APK and AAB
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease
+
+      - name: Upload release files
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Audio-Lab-signed-release
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
