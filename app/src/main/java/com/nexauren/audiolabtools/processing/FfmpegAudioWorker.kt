@@ -138,6 +138,7 @@ class FfmpegAudioWorker(
                 "convert-audio" -> "_converted"
                 "audio-compress" -> "_compressed"
                 "remove-silence" -> "_cleaned"
+                "dynamic-compressor" -> "_compressed_dynamics"
                 "speed-audio" -> "_speed"
                 "pitch-audio" -> "_pitch"
                 "edit-metadata" -> "_tagged"
@@ -324,10 +325,13 @@ class FfmpegAudioWorker(
         args += listOf("-i", source.absolutePath, "-map", "0:a:0", "-vn")
 
         when (toolId) {
-            "convert-audio" -> args += codecOptions(outputFormat, inputData.getString(ProcessingContract.KEY_TARGET_BITRATE) ?: "192k")
+            "convert-audio" -> {
+                val bitrate = safeBitrate(inputData.getString(ProcessingContract.KEY_TARGET_BITRATE), "192k")
+                args += codecOptions(outputFormat, bitrate)
+            }
             "audio-compress" -> {
-                val bitrate = inputData.getString(ProcessingContract.KEY_TARGET_BITRATE) ?: "128k"
-                args += listOf("-c:a", "aac", "-b:a", bitrate)
+                val bitrate = safeBitrate(inputData.getString(ProcessingContract.KEY_TARGET_BITRATE), "128k")
+                args += listOf("-c:a", "aac", "-b:a", bitrate, "-movflags", "+faststart")
             }
             "trim-audio" -> {
                 val duration = inputData.getDouble(ProcessingContract.KEY_DURATION_SECONDS, 15.0)
@@ -347,7 +351,24 @@ class FfmpegAudioWorker(
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
             }
             "remove-silence" -> {
-                args += listOf("-af", "afftdn=nf=-25")
+                val reduction = inputData.getDouble(ProcessingContract.KEY_NOISE_REDUCTION, 12.0)
+                    .coerceIn(0.01, 40.0)
+                val floor = inputData.getDouble("noise_floor_db", -50.0)
+                    .coerceIn(-80.0, -20.0)
+                args += listOf("-af", "afftdn=nr=${decimal(reduction)}:nf=${decimal(floor)}:tn=1")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "dynamic-compressor" -> {
+                val ratio = inputData.getDouble(ProcessingContract.KEY_COMPRESSOR_RATIO, 3.0)
+                    .coerceIn(1.0, 12.0)
+                val thresholdDb = inputData.getDouble(
+                    ProcessingContract.KEY_COMPRESSOR_THRESHOLD_DB, -18.0
+                ).coerceIn(-36.0, -6.0)
+                val threshold = Math.pow(10.0, thresholdDb / 20.0)
+                args += listOf(
+                    "-af",
+                    "acompressor=threshold=${decimal(threshold)}:ratio=${decimal(ratio)}:attack=20:release=250:makeup=1.2:knee=2.8:mix=1"
+                )
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
             }
             "speed-audio" -> {
@@ -388,7 +409,7 @@ class FfmpegAudioWorker(
         return args
     }
 
-    private fun analyseAudio(source: File): String {
+    private suspend fun analyseAudio(source: File): String {
         val probe = FfmpegAudioEngine.probe(source.absolutePath)
         val format = probe.optJSONObject("format") ?: JSONObject()
         val stream = probe.optJSONArray("streams")?.optJSONObject(0) ?: JSONObject()
@@ -455,6 +476,14 @@ class FfmpegAudioWorker(
             .take(2000)
             .toList()
         return values.takeIf { it.isNotEmpty() }?.average()
+    }
+
+    private fun safeBitrate(value: String?, fallback: String): String {
+        val parsed = value?.trim()?.lowercase(Locale.ROOT)
+            ?.removeSuffix("k")
+            ?.toIntOrNull()
+            ?: return fallback
+        return parsed.coerceIn(32, 320).toString() + "k"
     }
 
     private fun codecOptions(format: String, bitrate: String): List<String> = when (format) {
