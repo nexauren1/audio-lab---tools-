@@ -353,7 +353,7 @@ class FfmpegAudioWorker(
             "remove-silence" -> {
                 val reduction = inputData.getDouble(ProcessingContract.KEY_NOISE_REDUCTION, 12.0)
                     .coerceIn(0.01, 40.0)
-                val floor = inputData.getDouble("noise_floor_db", -50.0)
+                val floor = inputData.getDouble(ProcessingContract.KEY_NOISE_FLOOR_DB, -50.0)
                     .coerceIn(-80.0, -20.0)
                 args += listOf("-af", "afftdn=nr=${decimal(reduction)}:nf=${decimal(floor)}:tn=1")
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
