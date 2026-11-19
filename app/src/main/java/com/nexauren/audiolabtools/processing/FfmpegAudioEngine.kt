@@ -6,6 +6,7 @@ import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.FFprobeKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.StatisticsCallback
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -32,8 +33,10 @@ object FfmpegAudioEngine {
 
         return suspendCancellableCoroutine { continuation ->
             val sessionId = AtomicLong(-1L)
+            val wasCancelled = AtomicBoolean(false)
 
             continuation.invokeOnCancellation {
+                wasCancelled.set(true)
                 val activeSessionId = sessionId.get()
                 if (activeSessionId > 0L) {
                     FFmpegKit.cancel(activeSessionId)
@@ -68,7 +71,7 @@ object FfmpegAudioEngine {
                     statisticsCallback
                 )
                 sessionId.set(session.sessionId)
-                if (!continuation.isActive) {
+                if (wasCancelled.get()) {
                     FFmpegKit.cancel(session.sessionId)
                 }
             } catch (error: Exception) {
