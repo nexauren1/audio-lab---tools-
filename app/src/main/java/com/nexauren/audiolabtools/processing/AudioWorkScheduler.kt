@@ -101,7 +101,7 @@ object AudioWorkScheduler {
             ProcessingContract.KEY_NOISE_REDUCTION to noiseReductionDb,
             ProcessingContract.KEY_COMPRESSOR_RATIO to compressorRatio,
             ProcessingContract.KEY_COMPRESSOR_THRESHOLD_DB to compressorThresholdDb,
-            "noise_floor_db" to noiseFloorDb,
+            ProcessingContract.KEY_NOISE_FLOOR_DB to noiseFloorDb,
             ProcessingContract.KEY_SPEED to speed,
             ProcessingContract.KEY_PITCH to pitch,
             ProcessingContract.KEY_METADATA_TITLE to title,
