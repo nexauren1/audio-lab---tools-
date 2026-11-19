@@ -56,8 +56,7 @@ fun ToolsScreen(onOpenTool: (AudioTool) -> Unit) {
         Triple("CONVERT", localized("Converter", "Convert", isPt), ToolCategory.CONVERT),
         Triple("CLEAN", localized("Melhorar", "Enhance", isPt), ToolCategory.CLEAN),
         Triple("ANALYZE", localized("Analisar", "Analyze", isPt), ToolCategory.ANALYZE),
-        Triple("METADATA", localized("Metadados", "Metadata", isPt), ToolCategory.METADATA),
-        Triple("BATCH", localized("Em lote", "Batch", isPt), ToolCategory.BATCH)
+        Triple("METADATA", localized("Metadados", "Metadata", isPt), ToolCategory.METADATA)
     )
 
     val visibleTools = AudioToolCatalog.tools.filter { tool ->
