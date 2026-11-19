@@ -8,8 +8,7 @@ enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: St
     CONVERT("Conversão", "Conversion", "⇄"),
     CLEAN("Efeitos e melhoria", "Effects & enhance", "✧"),
     ANALYZE("Análise", "Analysis", "◉"),
-    METADATA("Metadados", "Metadata", "ⓘ"),
-    BATCH("Em lote", "Batch", "▦")
+    METADATA("Metadados", "Metadata", "ⓘ")
 }
 
 enum class ToolOperation {
@@ -53,9 +52,9 @@ object AudioToolCatalog {
         AudioTool("trim-audio", ToolCategory.EDIT, "Cortar áudio", "Trim audio",
             "Definir início e duração e guardar um novo ficheiro.", "Set a start point and duration, then save a new file.",
             "✂", ToolOperation.FFMPEG_TRIM),
-        AudioTool("split-audio", ToolCategory.EDIT, "Dividir áudio", "Split audio",
-            "Separar um ficheiro em várias partes.", "Split one file into separate parts.",
-            "⋈", ToolOperation.NOT_READY),
+        AudioTool("fade-out-audio", ToolCategory.EDIT, "Saída gradual", "Fade out",
+            "Reduzir o volume gradualmente no fim da faixa.", "Fade the volume down gradually at the end of a track.",
+            "↘", ToolOperation.FFMPEG_EFFECT),
         AudioTool("join-audio", ToolCategory.EDIT, "Unir áudios", "Join audio files",
             "Juntar de 2 a 8 ficheiros numa faixa.", "Combine 2 to 8 audio files into one track.",
             "＋", ToolOperation.FFMPEG_JOIN),
@@ -86,9 +85,9 @@ object AudioToolCatalog {
         AudioTool("edit-metadata", ToolCategory.METADATA, "Editor de metadados", "Metadata editor",
             "Editar título e artista em ficheiros compatíveis.", "Edit title and artist tags in supported files.",
             "▤", ToolOperation.FFMPEG_METADATA),
-        AudioTool("batch-process", ToolCategory.BATCH, "Processamento em lote", "Batch processing",
-            "Aplicar uma operação a vários ficheiros.", "Apply one operation to multiple files.",
-            "▦", ToolOperation.NOT_READY),
+        AudioTool("highpass-audio", ToolCategory.CLEAN, "Filtro passa-alto", "High-pass filter",
+            "Reduzir frequências abaixo de 250 Hz.", "Reduce frequencies below 250 Hz.",
+            "⌁", ToolOperation.FFMPEG_EFFECT),
         AudioTool("audio-compress", ToolCategory.CONVERT, "Comprimir áudio", "Compress audio",
             "Reduzir o tamanho em AAC/M4A com controlo de bitrate.", "Reduce file size to AAC/M4A with bitrate control.",
             "⇣", ToolOperation.FFMPEG_COMPRESS),
