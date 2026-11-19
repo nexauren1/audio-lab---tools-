@@ -243,7 +243,6 @@ private fun ToolCatalogueCard(
         ToolCategory.CLEAN -> Color(0xFF8F55FF)
         ToolCategory.ANALYZE -> Color(0xFF14D0C1)
         ToolCategory.METADATA -> Color(0xFFFF8A3D)
-        ToolCategory.BATCH -> Color(0xFFE34CA7)
     }
     Card(
         onClick = onClick,
