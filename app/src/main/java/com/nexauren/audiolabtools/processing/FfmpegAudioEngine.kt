@@ -57,7 +57,7 @@ object FfmpegAudioEngine {
                 }
                 val statisticsCallback = StatisticsCallback { statistics ->
                     if (continuation.isActive) {
-                        onStatistics(statistics.time.coerceAtLeast(0L))
+                        onStatistics(statistics.time.coerceAtLeast(0.0).toLong())
                     }
                 }
 
