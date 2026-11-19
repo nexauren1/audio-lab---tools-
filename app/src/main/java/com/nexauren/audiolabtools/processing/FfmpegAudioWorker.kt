@@ -11,6 +11,11 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -19,6 +24,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class FfmpegAudioWorker(
     appContext: Context,
@@ -155,7 +162,57 @@ class FfmpegAudioWorker(
                 ProcessingContract.KEY_PROGRESS to 48,
                 ProcessingContract.KEY_STAGE to "Processing audio locally"
             ))
-            FfmpegAudioEngine.execute(arguments)
+
+            val inputDurationMs = sourceCopies.sumOf { source ->
+                currentCoroutineContext().ensureActive()
+                FfmpegAudioEngine.durationMs(source.absolutePath)
+            }
+            val expectedOutputDurationMs = when (toolId) {
+                "trim-audio" -> (inputData.getDouble(
+                    ProcessingContract.KEY_DURATION_SECONDS, 15.0
+                ) * 1000.0).toLong().coerceAtLeast(1L)
+                "speed-audio" -> {
+                    val speed = inputData.getDouble(ProcessingContract.KEY_SPEED, 1.25)
+                    if (speed > 0.0) (inputDurationMs / speed).toLong() else inputDurationMs
+                }
+                else -> inputDurationMs
+            }.coerceAtLeast(0L)
+
+            val latestStatistics = AtomicLong(0L)
+            val lastProgress = AtomicInteger(47)
+            val progressScope = CoroutineScope(currentCoroutineContext())
+            val progressJob = progressScope.launch {
+                while (isActive) {
+                    val processedMs = latestStatistics.get()
+                    if (expectedOutputDurationMs > 0L && processedMs > 0L) {
+                        val computed = (
+                            48L + processedMs.coerceAtMost(expectedOutputDurationMs) * 39L /
+                                expectedOutputDurationMs
+                            ).toInt().coerceIn(48, 87)
+                        while (true) {
+                            val previous = lastProgress.get()
+                            if (computed <= previous || lastProgress.compareAndSet(previous, computed)) {
+                                if (computed > previous) {
+                                    setProgress(workDataOf(
+                                        ProcessingContract.KEY_PROGRESS to computed,
+                                        ProcessingContract.KEY_STAGE to "Processing audio locally"
+                                    ))
+                                }
+                                break
+                            }
+                        }
+                    }
+                    delay(350L)
+                }
+            }
+
+            try {
+                FfmpegAudioEngine.execute(arguments) { processedMs ->
+                    latestStatistics.set(processedMs)
+                }
+            } finally {
+                progressJob.cancelAndJoin()
+            }
 
             currentCoroutineContext().ensureActive()
             if (!outputFile.isFile || outputFile.length() <= 0L) {
