@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -212,7 +213,7 @@ class FfmpegAudioWorker(
                     latestStatistics.set(processedMs)
                 }
             } finally {
-                progressJob.cancelAndJoin()
+                withContext(NonCancellable) { progressJob.cancelAndJoin() }
             }
 
             currentCoroutineContext().ensureActive()
