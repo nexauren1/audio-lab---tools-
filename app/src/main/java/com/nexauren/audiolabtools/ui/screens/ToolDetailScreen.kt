@@ -86,6 +86,10 @@ fun ToolDetailScreen(
         )
     }
     var targetBitrate by rememberSaveable(tool.id) { mutableStateOf(128f) }
+    var noiseReductionDb by rememberSaveable(tool.id) { mutableStateOf(12f) }
+    var noiseFloorDb by rememberSaveable(tool.id) { mutableStateOf(-50f) }
+    var compressorRatio by rememberSaveable(tool.id) { mutableStateOf(3f) }
+    var compressorThresholdDb by rememberSaveable(tool.id) { mutableStateOf(-18f) }
     var trimStart by rememberSaveable(tool.id) { mutableStateOf("0") }
     var trimDuration by rememberSaveable(tool.id) { mutableStateOf("15") }
     var speed by rememberSaveable(tool.id) { mutableStateOf(1.25f) }
@@ -367,6 +371,33 @@ fun ToolDetailScreen(
                                 )
                             }
                         }
+                        if (outputFormat in setOf("mp3", "aac", "m4a", "opus")) {
+                            Spacer(Modifier.height(13.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    localized("Bitrate", "Bitrate", isPt),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "${targetBitrate.toInt()} kbps",
+                                    color = AudioLabPalette.Cyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Slider(
+                                value = targetBitrate,
+                                onValueChange = { targetBitrate = it },
+                                valueRange = 64f..320f,
+                                steps = 7
+                            )
+                            Text(
+                                localized("Bitrate mais alto costuma preservar mais detalhe, mas cria ficheiros maiores.", "Higher bitrates usually preserve more detail but create larger files.", isPt),
+                                color = AudioLabPalette.Muted,
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
                 ToolOperation.FFMPEG_COMPRESS -> {
@@ -421,6 +452,68 @@ fun ToolDetailScreen(
                         }
                         Text(
                             localized("O original permanece intacto. O corte é guardado num novo ficheiro.", "The original stays intact. The trimmed audio is saved as a new file.", isPt),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                ToolOperation.FFMPEG_NOISE_REDUCTION -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Redução de ruído", "Noise reduction", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Intensidade", "Reduction strength", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text("${noiseReductionDb.toInt()} dB", color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = noiseReductionDb,
+                            onValueChange = { noiseReductionDb = it },
+                            valueRange = 6f..30f,
+                            steps = 11
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Piso de ruído", "Noise floor", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text("${noiseFloorDb.toInt()} dB", color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = noiseFloorDb,
+                            onValueChange = { noiseFloorDb = it },
+                            valueRange = -80f..-20f,
+                            steps = 11
+                        )
+                        Text(
+                            localized("Uma redução muito forte pode retirar detalhes da voz ou da música. Começa com valores moderados.", "Very strong reduction can remove detail from speech or music. Start with moderate settings.", isPt),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                ToolOperation.FFMPEG_DYNAMICS -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Compressor dinâmico", "Dynamic compressor", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Ratio", "Ratio", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text(String.format(Locale.US, "%.1f:1", compressorRatio), color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = compressorRatio,
+                            onValueChange = { compressorRatio = it },
+                            valueRange = 1f..8f,
+                            steps = 13
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Threshold", "Threshold", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text("${compressorThresholdDb.toInt()} dB", color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = compressorThresholdDb,
+                            onValueChange = { compressorThresholdDb = it },
+                            valueRange = -36f..-6f,
+                            steps = 14
+                        )
+                        Text(
+                            localized("O compressor reduz a dinâmica acima do threshold. Valores extremos podem deixar o áudio demasiado comprimido.", "The compressor reduces dynamics above the threshold. Extreme settings can make audio sound over-compressed.", isPt),
                             color = AudioLabPalette.Muted,
                             fontSize = 10.sp
                         )
@@ -488,7 +581,8 @@ fun ToolDetailScreen(
                 ToolOperation.FFMPEG_PITCH,
                 ToolOperation.FFMPEG_METADATA,
                 ToolOperation.FFMPEG_ANALYZE,
-                ToolOperation.FFMPEG_JOIN -> if (ffmpegSupported) {
+                ToolOperation.FFMPEG_JOIN,
+                ToolOperation.FFMPEG_DYNAMICS -> if (ffmpegSupported) {
                     localized(
                         "Motor local multiformato: MP3, WAV, FLAC, AAC, M4A, OGG e OPUS. O ficheiro original não é substituído.",
                         "Local multiformat engine: MP3, WAV, FLAC, AAC, M4A, OGG and OPUS. The source file is never overwritten.",
@@ -521,7 +615,8 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_SPEED,
                         ToolOperation.FFMPEG_PITCH,
                         ToolOperation.FFMPEG_METADATA,
-                        ToolOperation.FFMPEG_ANALYZE -> {
+                        ToolOperation.FFMPEG_ANALYZE,
+                        ToolOperation.FFMPEG_DYNAMICS -> {
                             if (!ffmpegSupported && sourceName.endsWith(".wav", ignoreCase = true) &&
                                 tool.operation in setOf(ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV)
                             ) {
@@ -541,6 +636,10 @@ fun ToolDetailScreen(
                                     startSeconds = trimStart.toDoubleOrNull() ?: 0.0,
                                     durationSeconds = trimDuration.toDoubleOrNull() ?: 15.0,
                                     gainDb = gainDb.toDouble(),
+                                    noiseReductionDb = noiseReductionDb.toDouble(),
+                                    noiseFloorDb = noiseFloorDb.toDouble(),
+                                    compressorRatio = compressorRatio.toDouble(),
+                                    compressorThresholdDb = compressorThresholdDb.toDouble(),
                                     speed = speed.toDouble(),
                                     pitch = pitch.toDouble(),
                                     title = metadataTitle,
@@ -588,6 +687,7 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_PITCH -> localized("Aplicar tonalidade", "Apply pitch", isPt)
                         ToolOperation.FFMPEG_METADATA -> localized("Guardar metadados", "Save metadata", isPt)
                         ToolOperation.FFMPEG_ANALYZE -> localized("Analisar frequências", "Analyse frequencies", isPt)
+                        ToolOperation.FFMPEG_DYNAMICS -> localized("Comprimir dinâmica", "Compress dynamics", isPt)
                         ToolOperation.FFMPEG_JOIN -> localized("Unir ficheiros", "Join audio files", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
@@ -604,7 +704,8 @@ fun ToolDetailScreen(
                     ToolOperation.FFMPEG_PITCH,
                     ToolOperation.FFMPEG_METADATA,
                     ToolOperation.FFMPEG_ANALYZE,
-                    ToolOperation.FFMPEG_JOIN
+                    ToolOperation.FFMPEG_JOIN,
+                    ToolOperation.FFMPEG_DYNAMICS
                 )
             ) {
                 Spacer(Modifier.height(6.dp))
