@@ -48,9 +48,10 @@ fun HomeScreen(
 ) {
     val isPt = isPortuguese()
     val quickTools = listOf(
-        "audio-info" to localized("Analisar", "Analyze", isPt),
-        "normalize-wav" to localized("Normalizar", "Normalize", isPt),
-        "amplify-wav" to localized("Volume", "Gain", isPt)
+        "trim-audio" to localized("Cortar", "Trim", isPt),
+        "convert-audio" to localized("Converter", "Convert", isPt),
+        "audio-compress" to localized("Comprimir", "Compress", isPt),
+        "speed-audio" to localized("Velocidade", "Speed", isPt)
     ).mapNotNull { (id, label) -> AudioToolCatalog.find(id)?.let { it to label } }
 
     Column(
@@ -163,13 +164,6 @@ fun HomeScreen(
                     onClick = { onOpenTool(tool) }
                 )
             }
-            QuickActionCard(
-                title = localized("Ver tudo", "All tools", isPt),
-                symbol = "▦",
-                tint = Color(0xFFFF963B),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenTools
-            )
         }
 
         Spacer(Modifier.height(26.dp))
