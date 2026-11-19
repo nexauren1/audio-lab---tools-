@@ -1,14 +1,19 @@
 package com.nexauren.audiolabtools.ui
 
+import android.app.Activity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +40,16 @@ private enum class Destination {
 @Composable
 fun AudioLabApp() {
     val context = LocalContext.current
+    val languagePreferences = context.getSharedPreferences("audio_lab_settings", Activity.MODE_PRIVATE)
+    var showFirstLaunchLanguagePicker by rememberSaveable {
+        mutableStateOf(!languagePreferences.contains("app_language"))
+    }
+    fun chooseLanguage(languageTag: String) {
+        languagePreferences.edit().putString("app_language", languageTag).apply()
+        showFirstLaunchLanguagePicker = false
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
+        (context as? Activity)?.recreate()
+    }
     var destination by rememberSaveable { mutableStateOf(Destination.HOME.name) }
     var previousDestination by rememberSaveable { mutableStateOf(Destination.HOME.name) }
     var selectedToolId by rememberSaveable { mutableStateOf("audio-info") }
@@ -112,7 +127,7 @@ fun AudioLabApp() {
                 Destination.LIBRARY -> LibraryScreen(
                     onOpenFile = { uri, name -> openTool("audio-info", uri, name) }
                 )
-                Destination.SETTINGS -> SettingsScreen()
+                Destination.SETTINGS -> SettingsScreen(onLanguageSelected = ::chooseLanguage)
                 Destination.TOOL -> {
                     val tool = AudioToolCatalog.find(selectedToolId)
                     if (tool != null) {
@@ -126,5 +141,31 @@ fun AudioLabApp() {
                 }
             }
         }
+    if (showFirstLaunchLanguagePicker) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Choose your language", color = Color.White) },
+            text = {
+                Text(
+                    "English is the default. Choose English or Portuguese to continue. You can change it later in Settings.",
+                    color = AudioLabPalette.Muted
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { chooseLanguage("en") }) {
+                    Text("English", color = AudioLabPalette.Cyan)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { chooseLanguage("pt") }) {
+                    Text("Português", color = AudioLabPalette.Violet)
+                }
+            },
+            containerColor = AudioLabPalette.Surface,
+            titleContentColor = Color.White,
+            textContentColor = AudioLabPalette.Muted
+        )
+    }
+
     }
 }
