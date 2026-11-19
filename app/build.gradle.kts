@@ -1,4 +1,4 @@
-import java.util.Base64
+import java.io.File
 
 plugins {
     id("com.android.application")
@@ -6,31 +6,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Signing credentials are read only from the CI environment.
-// They are never stored in the repository or printed to the build log.
-val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+// The CI workflow decodes and validates the keystore in the runner's
+// temporary directory. No keystore or signing password is committed.
+val releaseKeystorePath = System.getenv("AUDIO_LAB_KEYSTORE_FILE")
 val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
 val keyAliasValue = System.getenv("KEY_ALIAS")
 val keyPasswordValue = System.getenv("KEY_PASSWORD")
+val releaseKeystoreFile = releaseKeystorePath
+    ?.takeIf { it.isNotBlank() }
+    ?.let { File(it) }
 
-val hasReleaseSigning = listOf(
-    keystoreBase64,
-    keystorePassword,
-    keyAliasValue,
-    keyPasswordValue
-).all { !it.isNullOrBlank() }
-
-val releaseKeystoreFile = layout.buildDirectory
-    .file("secure-signing/audio-lab-upload-keystore.jks")
-    .get()
-    .asFile
-
-if (hasReleaseSigning) {
-    releaseKeystoreFile.parentFile.mkdirs()
-    releaseKeystoreFile.writeBytes(
-        Base64.getDecoder().decode(keystoreBase64!!)
-    )
-}
+val hasReleaseSigning =
+    releaseKeystoreFile?.isFile == true &&
+    !keystorePassword.isNullOrBlank() &&
+    !keyAliasValue.isNullOrBlank() &&
+    !keyPasswordValue.isNullOrBlank()
 
 android {
     namespace = "com.nexauren.audiolab"
@@ -48,7 +38,7 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                storeFile = releaseKeystoreFile
+                storeFile = requireNotNull(releaseKeystoreFile)
                 storePassword = keystorePassword
                 keyAlias = keyAliasValue
                 keyPassword = keyPasswordValue
