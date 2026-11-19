@@ -530,6 +530,41 @@ fun ToolDetailScreen(
                         Slider(value = speed, onValueChange = { speed = it }, valueRange = 0.5f..2f, steps = 14)
                     }
                 }
+                ToolOperation.FFMPEG_NIGHTCORE -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Nightcore effect", "Nightcore effect", isPt)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Velocidade", "Speed", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text(String.format(Locale.US, "%.2fx", speed), color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = speed,
+                            onValueChange = { speed = it },
+                            valueRange = 1.05f..1.5f,
+                            steps = 8
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(localized("Subida de tonalidade", "Pitch increase", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                            Text("+${pitch.toInt()} st", color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = pitch,
+                            onValueChange = { pitch = it },
+                            valueRange = 1f..6f,
+                            steps = 4
+                        )
+                        Text(
+                            localized(
+                                "A velocidade e a tonalidade são aplicadas em conjunto; o ficheiro original é preservado.",
+                                "Speed and pitch are applied together; the original file is preserved.",
+                                isPt
+                            ),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
                 ToolOperation.FFMPEG_PITCH -> {
                     Spacer(Modifier.height(15.dp))
                     AudioOptionCard(title = localized("Tonalidade", "Pitch", isPt)) {
@@ -580,6 +615,7 @@ fun ToolDetailScreen(
                 ToolOperation.FFMPEG_NOISE_REDUCTION,
                 ToolOperation.FFMPEG_SPEED,
                 ToolOperation.FFMPEG_PITCH,
+                ToolOperation.FFMPEG_NIGHTCORE,
                 ToolOperation.FFMPEG_METADATA,
                 ToolOperation.FFMPEG_ANALYZE,
                 ToolOperation.FFMPEG_JOIN,
@@ -615,6 +651,7 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_NOISE_REDUCTION,
                         ToolOperation.FFMPEG_SPEED,
                         ToolOperation.FFMPEG_PITCH,
+                        ToolOperation.FFMPEG_NIGHTCORE,
                         ToolOperation.FFMPEG_METADATA,
                         ToolOperation.FFMPEG_ANALYZE,
                         ToolOperation.FFMPEG_DYNAMICS -> {
@@ -686,6 +723,7 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_NOISE_REDUCTION -> localized("Reduzir ruído", "Reduce noise", isPt)
                         ToolOperation.FFMPEG_SPEED -> localized("Aplicar velocidade", "Apply speed", isPt)
                         ToolOperation.FFMPEG_PITCH -> localized("Aplicar tonalidade", "Apply pitch", isPt)
+                        ToolOperation.FFMPEG_NIGHTCORE -> localized("Criar Nightcore", "Create Nightcore", isPt)
                         ToolOperation.FFMPEG_METADATA -> localized("Guardar metadados", "Save metadata", isPt)
                         ToolOperation.FFMPEG_ANALYZE -> localized("Analisar frequências", "Analyse frequencies", isPt)
                         ToolOperation.FFMPEG_DYNAMICS -> localized("Comprimir dinâmica", "Compress dynamics", isPt)
@@ -703,6 +741,7 @@ fun ToolDetailScreen(
                     ToolOperation.FFMPEG_NOISE_REDUCTION,
                     ToolOperation.FFMPEG_SPEED,
                     ToolOperation.FFMPEG_PITCH,
+                    ToolOperation.FFMPEG_NIGHTCORE,
                     ToolOperation.FFMPEG_METADATA,
                     ToolOperation.FFMPEG_ANALYZE,
                     ToolOperation.FFMPEG_JOIN,
