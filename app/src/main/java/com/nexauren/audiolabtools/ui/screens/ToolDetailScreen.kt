@@ -86,6 +86,7 @@ fun ToolDetailScreen(
         )
     }
     var targetBitrate by rememberSaveable(tool.id) { mutableStateOf(128f) }
+    var conversionBitrate by rememberSaveable(tool.id) { mutableStateOf(192f) }
     var noiseReductionDb by rememberSaveable(tool.id) { mutableStateOf(12f) }
     var noiseFloorDb by rememberSaveable(tool.id) { mutableStateOf(-50f) }
     var compressorRatio by rememberSaveable(tool.id) { mutableStateOf(3f) }
@@ -381,14 +382,14 @@ fun ToolDetailScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    "${targetBitrate.toInt()} kbps",
+                                    "${conversionBitrate.toInt()} kbps",
                                     color = AudioLabPalette.Cyan,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             Slider(
-                                value = targetBitrate,
-                                onValueChange = { targetBitrate = it },
+                                value = conversionBitrate,
+                                onValueChange = { conversionBitrate = it },
                                 valueRange = 64f..320f,
                                 steps = 7
                             )
@@ -632,7 +633,7 @@ fun ToolDetailScreen(
                                     sourceName = sourceName,
                                     toolId = tool.id,
                                     outputFormat = outputFormat,
-                                    targetBitrate = "${targetBitrate.toInt()}k",
+                                    targetBitrate = if (tool.operation == ToolOperation.FFMPEG_COMPRESS) "${targetBitrate.toInt()}k" else "${conversionBitrate.toInt()}k",
                                     startSeconds = trimStart.toDoubleOrNull() ?: 0.0,
                                     durationSeconds = trimDuration.toDoubleOrNull() ?: 15.0,
                                     gainDb = gainDb.toDouble(),
