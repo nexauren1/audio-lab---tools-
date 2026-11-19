@@ -1,5 +1,6 @@
 package com.nexauren.audiolabtools.data
 
+import androidx.appcompat.app.AppCompatDelegate
 import java.util.Locale
 
 enum class ToolCategory(val titlePt: String, val titleEn: String, val symbol: String) {
@@ -23,6 +24,7 @@ enum class ToolOperation {
     FFMPEG_DYNAMICS,
     FFMPEG_SPEED,
     FFMPEG_PITCH,
+    FFMPEG_NIGHTCORE,
     FFMPEG_METADATA,
     FFMPEG_ANALYZE,
     NOT_READY
@@ -91,6 +93,9 @@ object AudioToolCatalog {
         AudioTool("speed-audio", ToolCategory.EDIT, "Alterar velocidade", "Change speed",
             "Acelerar ou abrandar sem mudar o tom.", "Speed up or slow down without changing pitch.",
             "◴", ToolOperation.FFMPEG_SPEED),
+        AudioTool("nightcore", ToolCategory.EDIT, "Criador Nightcore", "Nightcore maker",
+            "Acelerar o áudio e elevar a tonalidade num único processamento.", "Speed up audio and raise pitch in one processing pass.",
+            "♫", ToolOperation.FFMPEG_NIGHTCORE),
         AudioTool("pitch-audio", ToolCategory.EDIT, "Alterar tonalidade", "Change pitch",
             "Subir ou baixar o tom do áudio.", "Raise or lower the audio pitch.",
             "♫", ToolOperation.FFMPEG_PITCH)
@@ -102,8 +107,9 @@ object AudioToolCatalog {
         tools.filter { it.category == category }
 }
 
-fun isPortuguese(locale: Locale = Locale.getDefault()): Boolean =
-    locale.language.equals("pt", ignoreCase = true)
+fun isPortuguese(
+    locale: Locale = AppCompatDelegate.getApplicationLocales().get(0) ?: Locale.getDefault()
+): Boolean = locale.language.equals("pt", ignoreCase = true)
 
 fun localized(pt: String, en: String, isPt: Boolean = isPortuguese()): String =
     if (isPt) pt else en
