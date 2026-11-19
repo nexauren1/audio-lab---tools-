@@ -95,6 +95,8 @@ fun ToolDetailScreen(
     var trimDuration by rememberSaveable(tool.id) { mutableStateOf("15") }
     var speed by rememberSaveable(tool.id) { mutableStateOf(1.25f) }
     var pitch by rememberSaveable(tool.id) { mutableStateOf(2f) }
+    var effectAmount by rememberSaveable(tool.id) { mutableStateOf(4f) }
+    var sampleRate by rememberSaveable(tool.id) { mutableStateOf(48000) }
     var metadataTitle by rememberSaveable(tool.id) { mutableStateOf("") }
     var metadataArtist by rememberSaveable(tool.id) { mutableStateOf("") }
     val ffmpegSupported = FfmpegAudioEngine.isSupportedOnThisDevice()
@@ -575,6 +577,66 @@ fun ToolDetailScreen(
                         Slider(value = pitch, onValueChange = { pitch = it }, valueRange = -6f..6f, steps = 23)
                     }
                 }
+                ToolOperation.FFMPEG_SAMPLE_RATE -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Frequência de saída", "Output sample rate", isPt)) {
+                        Text(
+                            localized("Escolhe a frequência de amostragem do ficheiro exportado.", "Choose the sample rate for the exported file.", isPt),
+                            color = AudioLabPalette.Muted,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(44100, 48000, 96000).forEach { rate ->
+                                FormatChoice(
+                                    label = if (rate == 44100) "44.1 kHz" else "${rate / 1000} kHz",
+                                    selected = sampleRate == rate,
+                                    onClick = { sampleRate = rate }
+                                )
+                            }
+                        }
+                    }
+                }
+                ToolOperation.FFMPEG_EFFECT -> {
+                    Spacer(Modifier.height(15.dp))
+                    AudioOptionCard(title = localized("Controlos do efeito", "Effect controls", isPt)) {
+                        val adjustable = tool.id in setOf(
+                            "audio-eq", "audio-8d", "add-reverb", "bass-boost",
+                            "treble-boost", "echo-audio", "chorus-audio",
+                            "flanger-audio", "phaser-audio", "tremolo-audio",
+                            "vibrato-audio", "distortion-audio"
+                        )
+                        if (tool.id == "voice-changer") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(localized("Deslocamento de tom", "Pitch shift", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                                Text(String.format(Locale.US, "%+.1f st", pitch), color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(value = pitch, onValueChange = { pitch = it }, valueRange = -6f..6f, steps = 23)
+                        } else if (adjustable) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(localized("Intensidade", "Intensity", isPt), color = Color.White, modifier = Modifier.weight(1f))
+                                Text("${effectAmount.toInt()}/10", color = AudioLabPalette.Cyan, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = effectAmount,
+                                onValueChange = { effectAmount = it },
+                                valueRange = 1f..10f,
+                                steps = 8
+                            )
+                        } else {
+                            Text(
+                                localized(
+                                    "Este efeito utiliza um preset de processamento equilibrado. O original nunca é substituído.",
+                                    "This effect uses a balanced processing preset. The original file is never overwritten.",
+                                    isPt
+                                ),
+                                color = AudioLabPalette.Muted,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
                 ToolOperation.FFMPEG_METADATA -> {
                     Spacer(Modifier.height(15.dp))
                     AudioOptionCard(title = localized("Etiquetas do ficheiro", "File tags", isPt)) {
@@ -619,7 +681,9 @@ fun ToolDetailScreen(
                 ToolOperation.FFMPEG_METADATA,
                 ToolOperation.FFMPEG_ANALYZE,
                 ToolOperation.FFMPEG_JOIN,
-                ToolOperation.FFMPEG_DYNAMICS -> if (ffmpegSupported) {
+                ToolOperation.FFMPEG_DYNAMICS,
+                ToolOperation.FFMPEG_SAMPLE_RATE,
+                ToolOperation.FFMPEG_EFFECT -> if (ffmpegSupported) {
                     localized(
                         "Motor local multiformato: MP3, WAV, FLAC, AAC, M4A, OGG e OPUS. O ficheiro original não é substituído.",
                         "Local multiformat engine: MP3, WAV, FLAC, AAC, M4A, OGG and OPUS. The source file is never overwritten.",
@@ -654,7 +718,9 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_NIGHTCORE,
                         ToolOperation.FFMPEG_METADATA,
                         ToolOperation.FFMPEG_ANALYZE,
-                        ToolOperation.FFMPEG_DYNAMICS -> {
+                        ToolOperation.FFMPEG_DYNAMICS,
+                        ToolOperation.FFMPEG_SAMPLE_RATE,
+                        ToolOperation.FFMPEG_EFFECT -> {
                             if (!ffmpegSupported && sourceName.endsWith(".wav", ignoreCase = true) &&
                                 tool.operation in setOf(ToolOperation.NORMALIZE_WAV, ToolOperation.GAIN_WAV)
                             ) {
@@ -673,13 +739,14 @@ fun ToolDetailScreen(
                                     targetBitrate = if (tool.operation == ToolOperation.FFMPEG_COMPRESS) "${targetBitrate.toInt()}k" else "${conversionBitrate.toInt()}k",
                                     startSeconds = trimStart.toDoubleOrNull() ?: 0.0,
                                     durationSeconds = trimDuration.toDoubleOrNull() ?: 15.0,
-                                    gainDb = gainDb.toDouble(),
+                                    gainDb = if (tool.operation == ToolOperation.FFMPEG_EFFECT) effectAmount.toDouble() else gainDb.toDouble(),
                                     noiseReductionDb = noiseReductionDb.toDouble(),
                                     noiseFloorDb = noiseFloorDb.toDouble(),
                                     compressorRatio = compressorRatio.toDouble(),
                                     compressorThresholdDb = compressorThresholdDb.toDouble(),
                                     speed = speed.toDouble(),
                                     pitch = pitch.toDouble(),
+                                    sampleRate = sampleRate,
                                     title = metadataTitle,
                                     artist = metadataArtist
                                 )
@@ -727,6 +794,8 @@ fun ToolDetailScreen(
                         ToolOperation.FFMPEG_METADATA -> localized("Guardar metadados", "Save metadata", isPt)
                         ToolOperation.FFMPEG_ANALYZE -> localized("Analisar frequências", "Analyse frequencies", isPt)
                         ToolOperation.FFMPEG_DYNAMICS -> localized("Comprimir dinâmica", "Compress dynamics", isPt)
+                        ToolOperation.FFMPEG_SAMPLE_RATE -> localized("Converter frequência", "Convert sample rate", isPt)
+                        ToolOperation.FFMPEG_EFFECT -> localized("Aplicar efeito", "Apply effect", isPt)
                         ToolOperation.FFMPEG_JOIN -> localized("Unir ficheiros", "Join audio files", isPt)
                         ToolOperation.NOT_READY -> ""
                     },
@@ -745,7 +814,9 @@ fun ToolDetailScreen(
                     ToolOperation.FFMPEG_METADATA,
                     ToolOperation.FFMPEG_ANALYZE,
                     ToolOperation.FFMPEG_JOIN,
-                    ToolOperation.FFMPEG_DYNAMICS
+                    ToolOperation.FFMPEG_DYNAMICS,
+                    ToolOperation.FFMPEG_SAMPLE_RATE,
+                    ToolOperation.FFMPEG_EFFECT
                 )
             ) {
                 Spacer(Modifier.height(6.dp))
