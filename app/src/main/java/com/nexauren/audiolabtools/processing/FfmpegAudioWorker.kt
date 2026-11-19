@@ -166,6 +166,8 @@ class FfmpegAudioWorker(
                 "silence-trim" -> "_silence_trimmed"
                 "limiter-audio" -> "_limited"
                 "voice-changer" -> "_voice"
+                "fade-out-audio" -> "_fadeout"
+                "highpass-audio" -> "_highpass"
                 "join-audio" -> "_joined"
                 else -> "_processed"
             }
@@ -524,6 +526,19 @@ class FfmpegAudioWorker(
                     "Reverse is limited to audio files up to 5 minutes to protect device memory."
                 }
                 args += listOf("-af", "areverse")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "fade-out-audio" -> {
+                val durationMs = FfmpegAudioEngine.durationMs(source.absolutePath)
+                require(durationMs > 0L) { "Could not read the audio duration for the fade-out." }
+                val totalSeconds = durationMs / 1000.0
+                val fadeSeconds = minOf(2.0, totalSeconds)
+                val startSeconds = (totalSeconds - fadeSeconds).coerceAtLeast(0.0)
+                args += listOf("-af", "afade=t=out:st=${decimal(startSeconds)}:d=${decimal(fadeSeconds)}")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "highpass-audio" -> {
+                args += listOf("-af", "highpass=f=250")
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
             }
             "fade-in-audio" -> {
