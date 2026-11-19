@@ -85,6 +85,7 @@ object AudioWorkScheduler {
         compressorThresholdDb: Double = -18.0,
         speed: Double = 1.25,
         pitch: Double = 2.0,
+        sampleRate: Int = 48000,
         title: String = "",
         artist: String = ""
     ): String {
@@ -104,6 +105,7 @@ object AudioWorkScheduler {
             ProcessingContract.KEY_NOISE_FLOOR_DB to noiseFloorDb,
             ProcessingContract.KEY_SPEED to speed,
             ProcessingContract.KEY_PITCH to pitch,
+            ProcessingContract.KEY_SAMPLE_RATE to sampleRate,
             ProcessingContract.KEY_METADATA_TITLE to title,
             ProcessingContract.KEY_METADATA_ARTIST to artist
         )
