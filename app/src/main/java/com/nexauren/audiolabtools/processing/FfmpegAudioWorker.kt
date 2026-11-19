@@ -141,6 +141,7 @@ class FfmpegAudioWorker(
                 "remove-silence" -> "_cleaned"
                 "dynamic-compressor" -> "_compressed_dynamics"
                 "speed-audio" -> "_speed"
+                "nightcore" -> "_nightcore"
                 "pitch-audio" -> "_pitch"
                 "edit-metadata" -> "_tagged"
                 "join-audio" -> "_joined"
@@ -173,7 +174,7 @@ class FfmpegAudioWorker(
                 "trim-audio" -> (inputData.getDouble(
                     ProcessingContract.KEY_DURATION_SECONDS, 15.0
                 ) * 1000.0).toLong().coerceAtLeast(1L)
-                "speed-audio" -> {
+                "speed-audio", "nightcore" -> {
                     val speed = inputData.getDouble(ProcessingContract.KEY_SPEED, 1.25)
                     if (speed > 0.0) (inputDurationMs / speed).toLong() else inputDurationMs
                 }
@@ -378,6 +379,27 @@ class FfmpegAudioWorker(
                     "Speed must be between 0.5x and 2.0x."
                 }
                 args += listOf("-af", "atempo=${decimal(speed)}")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "nightcore" -> {
+                val speed = inputData.getDouble(ProcessingContract.KEY_SPEED, 1.25)
+                val semitones = inputData.getDouble(ProcessingContract.KEY_PITCH, 2.0)
+                require(speed.isFinite() && speed in 1.05..1.5) {
+                    "Nightcore speed must be between 1.05x and 1.5x."
+                }
+                require(semitones.isFinite() && semitones in 1.0..6.0) {
+                    "Nightcore pitch must be between +1 and +6 semitones."
+                }
+                val probe = FfmpegAudioEngine.probe(source.absolutePath)
+                val sampleRate = probe.optJSONArray("streams")
+                    ?.optJSONObject(0)?.optInt("sample_rate", 44100) ?: 44100
+                val pitchFactor = Math.pow(2.0, semitones / 12.0)
+                val tempoCorrection = speed / pitchFactor
+                require(tempoCorrection in 0.5..2.0) {
+                    "The selected Nightcore settings are outside the supported processing range."
+                }
+                val filter = "asetrate=${decimal(sampleRate * pitchFactor)},aresample=$sampleRate,atempo=${decimal(tempoCorrection)}"
+                args += listOf("-af", filter)
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
             }
             "pitch-audio" -> {
