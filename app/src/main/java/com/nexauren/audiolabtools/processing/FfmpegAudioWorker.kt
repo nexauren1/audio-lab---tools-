@@ -144,6 +144,28 @@ class FfmpegAudioWorker(
                 "nightcore" -> "_nightcore"
                 "pitch-audio" -> "_pitch"
                 "edit-metadata" -> "_tagged"
+                "sample-rate" -> "_resampled"
+                "audio-eq" -> "_eq"
+                "audio-8d" -> "_8d"
+                "add-reverb" -> "_reverb"
+                "bass-boost" -> "_bass"
+                "treble-boost" -> "_treble"
+                "echo-audio" -> "_echo"
+                "chorus-audio" -> "_chorus"
+                "flanger-audio" -> "_flanger"
+                "phaser-audio" -> "_phaser"
+                "tremolo-audio" -> "_tremolo"
+                "vibrato-audio" -> "_vibrato"
+                "distortion-audio" -> "_distortion"
+                "radio-effect" -> "_radio"
+                "telephone-effect" -> "_telephone"
+                "mono-audio" -> "_mono"
+                "stereo-widen" -> "_stereo"
+                "reverse-audio" -> "_reverse"
+                "fade-in-audio" -> "_fadein"
+                "silence-trim" -> "_silence_trimmed"
+                "limiter-audio" -> "_limited"
+                "voice-changer" -> "_voice"
                 "join-audio" -> "_joined"
                 else -> "_processed"
             }
@@ -413,6 +435,119 @@ class FfmpegAudioWorker(
                 val factor = Math.pow(2.0, semitones / 12.0)
                 val returnTempo = 1.0 / factor
                 val filter = "asetrate=${decimal(sampleRate * factor)},aresample=$sampleRate,atempo=${decimal(returnTempo)}"
+                args += listOf("-af", filter)
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "sample-rate" -> {
+                val sampleRate = inputData.getInt(ProcessingContract.KEY_SAMPLE_RATE, 48000)
+                require(sampleRate in setOf(44100, 48000, 96000)) {
+                    "Choose 44.1, 48 or 96 kHz for the output sample rate."
+                }
+                args += listOf("-af", "aresample=$sampleRate")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "audio-eq" -> {
+                val gain = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 4.0).coerceIn(1.0, 10.0)
+                args += listOf("-af", "equalizer=f=1000:t=q:w=1:g=${decimal(gain)}")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "audio-8d" -> {
+                val amount = (inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 7.0) / 10.0).coerceIn(0.1, 1.0)
+                args += listOf(
+                    "-af",
+                    "aformat=channel_layouts=stereo,apulsator=amount=${decimal(amount)}:hz=0.08:mode=sine:offset_l=0:offset_r=0.5"
+                )
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "add-reverb" -> {
+                val wet = (inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 4.0) / 20.0).coerceIn(0.1, 0.6)
+                args += listOf("-af", "aecho=0.8:0.88:60|120:0.4|${decimal(wet)}")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "bass-boost" -> {
+                val gain = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 5.0).coerceIn(1.0, 10.0)
+                args += listOf("-af", "bass=g=${decimal(gain)}:f=90:w=0.7")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "treble-boost" -> {
+                val gain = inputData.getDouble(ProcessingContract.KEY_GAIN_DB, 4.0).coerceIn(1.0, 10.0)
+                args += listOf("-af", "treble=g=${decimal(gain)}:f=4000:w=0.7")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "echo-audio" -> {
+                args += listOf("-af", "aecho=0.8:0.88:120|240:0.4|0.2")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "chorus-audio" -> {
+                args += listOf("-af", "chorus=0.7:0.9:55:0.4:0.25:2")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "flanger-audio" -> {
+                args += listOf("-af", "flanger=delay=5:depth=2:regen=0:width=71:speed=0.5:shape=sinusoidal:phase=25:interp=linear")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "phaser-audio" -> {
+                args += listOf("-af", "aphaser=in_gain=0.4:out_gain=0.74:delay=3:decay=0.4:speed=0.5:type=t")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "tremolo-audio" -> {
+                args += listOf("-af", "tremolo=f=5:d=0.5")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "vibrato-audio" -> {
+                args += listOf("-af", "vibrato=f=5:d=0.5")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "distortion-audio" -> {
+                args += listOf("-af", "asoftclip=type=atan:threshold=0.5:output=0.9")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "radio-effect" -> {
+                args += listOf("-af", "highpass=f=300,lowpass=f=3400,acompressor=threshold=0.12:ratio=3:attack=15:release=120")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "telephone-effect" -> {
+                args += listOf("-af", "highpass=f=500,lowpass=f=3000")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "mono-audio" -> {
+                args += listOf("-ac", "1")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "stereo-widen" -> {
+                args += listOf("-af", "aformat=channel_layouts=stereo,stereotools=slev=1.35")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "reverse-audio" -> {
+                val duration = FfmpegAudioEngine.durationMs(source.absolutePath)
+                require(duration in 1L..300_000L) {
+                    "Reverse is limited to audio files up to 5 minutes to protect device memory."
+                }
+                args += listOf("-af", "areverse")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "fade-in-audio" -> {
+                args += listOf("-af", "afade=t=in:st=0:d=2")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "silence-trim" -> {
+                args += listOf("-af", "silenceremove=start_periods=1:start_duration=0.1:start_threshold=-50dB:stop_periods=-1:stop_duration=0.1:stop_threshold=-50dB")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "limiter-audio" -> {
+                args += listOf("-af", "alimiter=limit=0.95:attack=5:release=50")
+                args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
+            }
+            "voice-changer" -> {
+                val semitones = inputData.getDouble(ProcessingContract.KEY_PITCH, 2.0)
+                require(semitones.isFinite() && semitones in -6.0..6.0) {
+                    "Voice pitch shift must be between -6 and +6 semitones."
+                }
+                val probe = FfmpegAudioEngine.probe(source.absolutePath)
+                val sampleRate = probe.optJSONArray("streams")
+                    ?.optJSONObject(0)?.optInt("sample_rate", 44100) ?: 44100
+                val factor = Math.pow(2.0, semitones / 12.0)
+                val filter = "asetrate=${decimal(sampleRate * factor)},aresample=$sampleRate,atempo=${decimal(1.0 / factor)}"
                 args += listOf("-af", filter)
                 args += codecOptions(output.extension.lowercase(Locale.ROOT), "192k")
             }
