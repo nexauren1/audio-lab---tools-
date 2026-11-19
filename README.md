@@ -4,11 +4,11 @@ A native Android audio toolbox for editing, converting, cleaning and analysing a
 
 ## Product direction
 
-Audio Lab is a premium, offline-first toolbox. Its interface uses a dark workspace with violet and cyan accents, individual tool screens and an explicit background-processing queue.
+Audio Lab is a premium, offline-first toolbox. Its interface uses a dark workspace with violet and cyan accents, individual tool screens and a persistent background-processing queue.
 
 ## Supported audio formats
 
-The import flow uses Android's Storage Access Framework and the `audio/*` MIME filter. The advanced engine is configured for:
+The import flow uses Android's Storage Access Framework and the `audio/*` MIME filter. The FFmpeg audio engine is configured for:
 
 - MP3
 - WAV
@@ -18,49 +18,48 @@ The import flow uses Android's Storage Access Framework and the `audio/*` MIME f
 - OGG
 - OPUS
 
-Actual decoding and encoding still depends on the codecs included in the selected FFmpeg audio build. Files are processed locally; no audio is uploaded to a server.
+The selected FFmpeg audio build includes LAME/MP3, Vorbis and Opus encoders; AAC and FLAC encoders are provided by FFmpeg itself. Actual decoding still depends on the codecs built into the package. Audio files are processed on-device; source media is not uploaded.
 
 ## Implemented operations
 
-The current codebase includes these processing paths:
-
-- **Inspect audio:** FFprobe-based format, codec, duration, sample rate, channels, bit depth, size and bitrate details on supported 64-bit devices, with an Android MediaMetadataRetriever fallback.
-- **Convert format:** MP3, WAV, FLAC, AAC, M4A, OGG and OPUS output choices.
-- **Compress audio:** AAC/M4A output with a user-selected bitrate.
+- **Inspect audio:** FFprobe format, codec, duration, sample rate, channels, bit depth, size and bitrate, with an Android MediaMetadataRetriever fallback.
+- **Convert format:** MP3, WAV, FLAC, AAC, M4A, OGG and OPUS output choices. Bitrate is adjustable for MP3/AAC/M4A/OPUS.
+- **Compress file size:** AAC/M4A encoding with a 64–256 kbps quality/size setting.
 - **Trim audio:** select start and duration and save a new output file.
 - **Join audio:** select 2–8 files; inputs are resampled to a common stereo format before concatenation.
-- **Normalize volume:** loudness normalization for supported input formats.
+- **Normalize volume:** EBU R128 loudness normalization for supported audio formats.
 - **Gain:** increase or reduce volume with a bounded dB setting.
-- **Noise reduction:** FFmpeg frequency-domain denoising filter.
+- **Noise reduction:** FFmpeg FFT denoising with adjustable reduction strength and noise floor. Very aggressive settings can remove wanted audio detail.
+- **Dynamic compressor:** separate dynamics processing with adjustable ratio and threshold. This is not the same as reducing the encoded file size.
 - **Speed:** change playback speed while preserving pitch.
 - **Pitch:** adjust pitch by semitones while compensating duration.
 - **Metadata:** write title and artist tags when supported by the output container.
-- **Audio analysis:** codec and file inspection, peak/RMS levels and spectral metrics such as centroid, rolloff and flatness. Spectral metrics are sampled from the first 30 seconds.
+- **Audio analysis:** codec/file inspection, peak/RMS levels and spectral centroid, rolloff and flatness. Spectral metrics are sampled from the first 30 seconds.
 
-The following remain planned and are not presented as ready: split into many files, sample-rate-only conversion, batch processing, advanced metadata fields and an interactive spectrum/spectrogram visualiser.
+The following remain planned: split into many files, sample-rate-only conversion, batch processing, expanded metadata fields and an interactive spectrogram.
 
-## Device compatibility
+## Processing reliability
 
-The maintained FFmpeg audio package currently used by the app is built for `arm64-v8a` and `x86_64`. Its advanced operations are therefore enabled only on supported 64-bit devices. The existing streaming WAV PCM engine remains as a fallback for integer PCM WAV normalization and gain on devices without a supported FFmpeg ABI.
+- FFmpeg runs asynchronously and reports its own statistics to WorkManager for progress updates.
+- Cancelling a WorkManager job cancels the corresponding native FFmpeg session.
+- Files are imported to bounded local temporary files and copied to a new result. Source files are not overwritten.
+- Unsupported or invalid audio inputs return an error instead of publishing a partial result.
+- Temporary input/output files are removed after success, failure or cancellation.
+- Audio inspection is performed with FFprobe where the native engine is supported, with Android metadata extraction as a fallback.
 
-The current FFmpeg dependency is the community-maintained audio-only package `dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.9`, under LGPL-3.0. The app should retain the corresponding third-party notices and licence information in release builds. The audio-only variant is selected to avoid bundling the complete video feature set.
+## Device compatibility and size
 
-## Processing rules
+The maintained FFmpeg audio package currently used by the app is built for `arm64-v8a` and `x86_64`. Advanced FFmpeg operations are therefore enabled only on supported 64-bit devices. The existing streaming WAV PCM engine remains as a fallback for integer PCM WAV normalization and gain on devices without a supported FFmpeg ABI.
 
-1. Opening a tool prepares its screen; it does not start changing a file.
-2. Processing starts only after the user selects a source and taps the action button.
-3. Jobs are submitted to WorkManager and can continue when the user leaves a screen.
-4. Returning to the app reads the existing job state; it does not restart a task.
-5. Cancellation is explicit.
-6. Original source files are not overwritten. Results are saved as new files in the Audio Lab music folder.
-7. Temporary copies are deleted after success, failure or cancellation.
-8. Unsupported formats and encodings should return a readable error rather than a corrupt output.
+The app uses the audio-only artifact `dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.9`, rather than the full video package, to avoid bundling video-specific components. It still adds a substantial native-library payload to the APK; the release APK size must be checked before publication.
+
+The FFmpeg audio artifact is distributed under LGPL-3.0. Keep the upstream licence and third-party notices available in release builds, and verify the applicable LGPL packaging/source obligations before publishing. This note is not legal advice.
 
 ## Technical stack
 
-- Kotlin, Android native, Jetpack Compose and Material 3.
+- Kotlin, native Android, Jetpack Compose and Material 3.
 - WorkManager for persistent background work.
-- Maintained FFmpeg audio library plus FFprobe for multiformat operations.
+- Maintained FFmpeg audio library plus FFprobe.
 - Android MediaMetadataRetriever as an inspection fallback.
 - A streaming PCM WAV processor (8/16/24/32-bit integer PCM).
 - Storage Access Framework and MediaStore for safe file access.
@@ -73,4 +72,4 @@ The Gradle wrapper distribution is configured under `gradle/wrapper/gradle-wrapp
 
 ## Validation status
 
-The GitHub Actions workflow runs `assembleDebug` and `testDebugUnitTest` for each commit on `main`. A passing CI build validates compilation and unit tests; it does not replace real-device testing across supported Android versions, file providers, codecs and audio edge cases.
+GitHub Actions runs `assembleDebug` and `testDebugUnitTest` for each commit on `main`. A passing CI build validates compilation and unit tests; it does not replace real-device testing across supported Android versions, file providers, codecs, long files and audio edge cases.
