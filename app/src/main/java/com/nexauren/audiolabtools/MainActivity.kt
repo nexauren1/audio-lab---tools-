@@ -13,7 +13,7 @@ import com.nexauren.audiolabtools.ui.theme.AudioLabTheme
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val savedLanguage = getSharedPreferences("audio_lab_settings", MODE_PRIVATE)
+        val savedLanguage = getSharedPreferences("audio_lab_settings", android.content.Context.MODE_PRIVATE)
             .getString("app_language", "en") ?: "en"
         AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(savedLanguage))
         WindowCompat.setDecorFitsSystemWindows(window, false)
